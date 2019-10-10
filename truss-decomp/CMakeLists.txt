@@ -136,3 +136,16 @@ build_eval_tc(pkt-eval-tc-wp "WP=1" "")
 if (PLAYGROUND)
     add_subdirectory(playground)
 endif ()
+
+##################### Edge List to CSR ###############
+add_executable(edge_list_to_csr_performance_measure util/converter/edge_list_to_csr_performance_measure.cpp
+        util/converter/pscan_graph.cpp util/converter/output_util.cpp)
+target_compile_definitions(edge_list_to_csr_performance_measure PRIVATE OUTPUT_TO_FILE=1)
+
+add_executable(edge_list_to_csr_performance_measure_double_dir util/converter/edge_list_to_csr_performance_measure2.cpp
+        util/converter/pscan_graph.cpp util/converter/output_util.cpp)
+target_compile_definitions(edge_list_to_csr_performance_measure_double_dir PRIVATE OUTPUT_TO_FILE=1)
+
+add_executable(edge_list_to_csr_performance_measure_deg_descending
+        util/converter/edge_list_to_csr_performance_measure_deg_descending.cpp
+        util/converter/pscan_graph.cpp util/converter/output_util.cpp)

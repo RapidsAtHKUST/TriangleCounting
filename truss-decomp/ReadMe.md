@@ -3,12 +3,8 @@
 ### Build
 
 ```zsh
-cmake ~/workspace/yche/git-repos/OutOfCoreSCAN/truss-decomp -DBUILD_SERIAL=OFF -DPLAYGROUND=OFF
+cmake ~/workspace/yche/git-repos/OutOfCoreSCAN/truss-decomp 
 ```
-
-### Current Running Time
-
-see [code_review/results](code_review/results) md files.
 
 ### Files (Important)
 
@@ -27,10 +23,6 @@ Files | Comment
 
 Folder | Commment
 --- | ---
-[code_review](code_review) | analysis, bug-report, contributions, results, logics
-[pkt_parallel_org](pkt_parallel_org) | optimized orginal pkt (parallel ktruss decomposition)
-[pkt_serial](pkt_serial) | serial optimized original kt
-[related_work](related_work) | 2012-vldb-james-cheng-wc, 2014-pkdd-ros serial codes
 [reordering_utils](reordering_utils) | reordering utils
 [playground](playground) | test some language features
 [cmake](cmake) | `findxxx` cmake files
