@@ -5,6 +5,8 @@
 
 #include <chrono>
 #include <cassert>
+#include <unordered_map>
+#include <unordered_set>
 
 #include <omp.h>
 
@@ -107,7 +109,12 @@ int main(int argc, char *argv[]) {
         Edge *edge_lst =
                 (Edge *) mmap(0, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_POPULATE, file_fd, 0);
         Timer timer;
-
+#pragma omp parallel for
+        for (auto i = 0u; i < num_edges; i++) {
+            if (edge_lst[i].first > edge_lst[i].second) {
+                swap(edge_lst[i].first, edge_lst[i].second);
+            }
+        }
 #ifndef BASELINE_SORT
         parasort(num_edges, edge_lst, [](const pair<int32_t, int32_t> &left, const pair<int32_t, int32_t> &right) {
             if (left.first == right.first) {
@@ -128,19 +135,41 @@ int main(int argc, char *argv[]) {
         auto last_u = -1;
         auto last_v = -1;
         vector<Edge> edges2;
+
+#ifdef VERIFY_TABLE
+        int32_t tmp = -1;
+        for (uint32_t i = 0; i < num_edges; i++) {
+            tmp = max(tmp, max(edge_lst[i].first, edge_lst[i].second));
+        }
+        vector<unordered_set<int32_t >> tables(tmp + 1);
         for (auto i = 0u; i < num_edges; i++) {
             auto edge = edge_lst[i];
-            if (edge.first == edge.second)continue;
+            if (edge.first != edge.second) {
+                tables[min(edge.first, edge.second)].emplace(max(edge.first, edge.second));
+            }
+        }
+        size_t gt_size = 0;
+        for (auto &table:tables) {
+            gt_size += table.size();
+        }
+        log_info("GT edge#: %zu", gt_size);
+#endif
+        for (auto i = 0u; i < num_edges; i++) {
 
+            auto edge = edge_lst[i];
+//            if (i < 10) {
+//                log_info("%d, %d", edge.first, edge.second);
+//            }
             if (edge.first != last_u) {
                 last_u = edge.first;
                 last_v = edge.second;
-
-                edges2.emplace_back(edge);
+                if (edge.first != edge.second)
+                    edges2.emplace_back(edge);
             } else {
                 if (edge.second != last_v) {
                     last_v = edge.second;
-                    edges2.emplace_back(edge);
+                    if (edge.first != edge.second)
+                        edges2.emplace_back(edge);
                 }
             }
         }
@@ -304,6 +333,6 @@ adj_lst[old_offset] = src;
         for (auto i = 0u; i < g.m; i++)
             ComputeSupport(&g, tc_cnt, i);
         log_info("graph :%lld, %lld", g.n, g.m);
-        log_info("There are %zu triangles in the input graph.", tc_cnt);
+        log_info("There are %zu triangles in the input graph.", tc_cnt / 3);
     }
 }
