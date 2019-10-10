@@ -2,13 +2,18 @@
 // Created by yche on 10/10/19.
 //
 
+
+#include <chrono>
+#include <cassert>
+
+#include <omp.h>
+
 #include "util/file_system/file_util.h"
 #include "util/log.h"
 #include "util/program_options/popl.h"
 #include "util/search_util.h"
-
-#include <chrono>
-#include <cassert>
+#include "util/sort/parasort_cmp.h"
+#include "util/timer.h"
 
 #define ATOMIC
 
@@ -100,7 +105,48 @@ int main(int argc, char *argv[]) {
         auto file_name = string_option->value(0);
         auto file_fd = open(file_name.c_str(), O_RDONLY, S_IRUSR | S_IWUSR);
         Edge *edge_lst =
-                (Edge *) mmap(0, size, PROT_READ, MAP_PRIVATE | MAP_POPULATE, file_fd, 0);
+                (Edge *) mmap(0, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_POPULATE, file_fd, 0);
+        Timer timer;
+
+#ifndef BASELINE_SORT
+        parasort(num_edges, edge_lst, [](const pair<int32_t, int32_t> &left, const pair<int32_t, int32_t> &right) {
+            if (left.first == right.first) {
+                return left.second < right.second;
+            }
+            return left.first < right.first;
+        }, omp_get_max_threads());
+#else
+        sort(edge_lst, edge_lst + num_edges,
+             [](const pair<int32_t, int32_t> &left, const pair<int32_t, int32_t> &right) {
+                 if (left.first == right.first) {
+                     return left.second < right.second;
+                 }
+                 return left.first < right.first;
+             });
+#endif
+        log_info("Finish Sort, %.9lfs", timer.elapsed());
+        auto last_u = -1;
+        auto last_v = -1;
+        vector<Edge> edges2;
+        for (auto i = 0u; i < num_edges; i++) {
+            auto edge = edge_lst[i];
+            if (edge.first == edge.second)continue;
+
+            if (edge.first != last_u) {
+                last_u = edge.first;
+                last_v = edge.second;
+
+                edges2.emplace_back(edge);
+            } else {
+                if (edge.second != last_v) {
+                    last_v = edge.second;
+                    edges2.emplace_back(edge);
+                }
+            }
+        }
+        edge_lst = &edges2.front();
+        num_edges = edges2.size();
+        log_info("New # of edges: %zu", num_edges);
 
         int32_t max_node_id = -1;
         vector<int32_t> deg_lst;
@@ -115,7 +161,6 @@ int main(int argc, char *argv[]) {
 #if defined(LOCKS)
         omp_lock_t *locks;
 #endif
-
 #pragma omp parallel
         {
             // 1st: get the cardinality of degree array
@@ -215,20 +260,20 @@ int main(int argc, char *argv[]) {
                 adj_lst[old_offset] = src;
 #elif defined(LOCKS)
                 omp_set_lock(&locks[src]);
-            old_offset = cur_write_off[src];
-            new_offset = old_offset + 1;
-            cur_write_off[src] = new_offset;
-            omp_unset_lock(&locks[src]);
+old_offset = cur_write_off[src];
+new_offset = old_offset + 1;
+cur_write_off[src] = new_offset;
+omp_unset_lock(&locks[src]);
 
-            adj_lst[old_offset] = dst;
+adj_lst[old_offset] = dst;
 
-            omp_set_lock(&locks[dst]);
-            old_offset = cur_write_off[dst];
-            new_offset = old_offset + 1;
-            cur_write_off[dst] = new_offset;
-            omp_unset_lock(&locks[dst]);
+omp_set_lock(&locks[dst]);
+old_offset = cur_write_off[dst];
+new_offset = old_offset + 1;
+cur_write_off[dst] = new_offset;
+omp_unset_lock(&locks[dst]);
 
-            adj_lst[old_offset] = src;
+adj_lst[old_offset] = src;
 #endif
             }
 #pragma omp single
@@ -250,14 +295,15 @@ int main(int argc, char *argv[]) {
 //        vector<uint32_t> off;
 //        vector<int32_t> adj_lst;
         graph_t g;
-        g.n = off.size()-1;
+        g.n = off.size() - 1;
         g.m = adj_lst.size();
         g.adj = &adj_lst.front();
         g.num_edges = &off.front();
-        size_t tc_cnt =0;
+        size_t tc_cnt = 0;
 #pragma omp parallel for schedule(dynamic, 6000) reduction(+:tc_cnt)
         for (auto i = 0u; i < g.m; i++)
             ComputeSupport(&g, tc_cnt, i);
+        log_info("graph :%lld, %lld", g.n, g.m);
         log_info("There are %zu triangles in the input graph.", tc_cnt);
     }
 }
