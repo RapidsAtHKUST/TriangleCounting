@@ -2,6 +2,7 @@
 
 #include "tc_utils.h"
 #include "util/radix_hash_map.h"
+#include "util/libpopcnt.h"
 
 inline size_t CountTriBMPWithPack(graph_t &g, int max_omp_threads) {
     Timer tc_timer;
@@ -12,31 +13,56 @@ inline size_t CountTriBMPWithPack(graph_t &g, int max_omp_threads) {
     size_t workload = 0;
     size_t workload_large_deg = 0;
     int threshold = 32768; // word-packing for [0, 32768), otherwise normal table (using bitmap)
+
+    using word_t = uint64_t;
+    constexpr int word_in_bits = sizeof(word_t) * 8;
+    vector<vector<uint16_t>> word_indexes(g.n);   // 65536 * bits-sizeof(word)
+    vector<vector<uint64_t>> words(g.n);
+
 #pragma omp parallel num_threads(max_omp_threads)
     {
-        // Bit vectors.
         auto bits_vec = vector<bool>(g.n, false);
 #pragma omp for reduction(max: max_d)
         for (auto u = 0u; u < g.n; u++) {
             row_ptrs_end[u + 1] = static_cast<uint32_t>(
                     lower_bound(g.adj + g.row_ptrs[u], g.adj + g.row_ptrs[u + 1], u) - g.adj);
-            row_ptrs_beg[u] = lower_bound(g.adj + g.row_ptrs[u], g.adj + g.row_ptrs[u + 1], threshold) - g.adj;
+            row_ptrs_beg[u] = lower_bound(g.adj + g.row_ptrs[u], g.adj + g.row_ptrs[u + 1],
+                                          min<int>(threshold, u)) - g.adj;
             max_d = max<int>(max_d, row_ptrs_end[u + 1] - g.row_ptrs[u]);
         }
 #pragma omp single
         {
             log_info("finish init row_ptrs_end, max d: %d", max_d);
-            {
-                stringstream ss;
-                ss << pretty_print_array(g.adj + g.row_ptrs[0], row_ptrs_end[1] - g.row_ptrs[0]);
-                ss << pretty_print_array(g.adj + g.row_ptrs[1000], row_ptrs_end[1001] - g.row_ptrs[1000]);
-                log_info("Example v0, v1000: %s", ss.str().c_str());
+        }
+
+        // Construct Words for Range [0, 32768)
+#pragma omp for schedule(dynamic, 100)
+        for (auto u = 0u; u < g.n; u++) {
+            auto prev_blk_id = -1;
+            for (auto off = g.row_ptrs[u]; off < row_ptrs_beg[u]; off++) {
+                auto v = g.adj[off];
+                int cur_blk_id = v / word_in_bits;
+                if (cur_blk_id != prev_blk_id) {
+                    prev_blk_id = cur_blk_id;
+                    word_indexes[u].emplace_back(cur_blk_id);
+                    words[u].emplace_back(0);
+                }
+                words[u].back() |= static_cast<word_t>(1u) << (v % word_in_bits);
             }
-        };
+        }
+#pragma omp single
+        {
+            log_info("Finish Indexing: %.9lfs", tc_timer.elapsed());
+        }
 
 #pragma omp for schedule(dynamic, 100) reduction(+:tc_cnt) reduction(+:workload)  reduction(+:workload_large_deg)
         for (auto u = 0u; u < g.n; u++) {
             // Set.
+            BoolArray<word_t> bitmap(threshold);
+            for (size_t i = 0; i < word_indexes[u].size(); i++) {
+                assert(word_indexes[u][i] < 32768 / word_in_bits);
+                bitmap.setWord(word_indexes[u][i], words[u][i]);
+            }
             for (auto edge_idx = row_ptrs_beg[u]; edge_idx < row_ptrs_end[u + 1]; edge_idx++) {
                 auto v = g.adj[edge_idx];
                 bits_vec[v] = true;
@@ -44,6 +70,11 @@ inline size_t CountTriBMPWithPack(graph_t &g, int max_omp_threads) {
             for (auto edge_idx = g.row_ptrs[u]; edge_idx < row_ptrs_end[u + 1]; edge_idx++) {
                 auto v = g.adj[edge_idx];
                 auto cn_count = 0;
+                for (size_t i = 0; i < word_indexes[v].size(); i++) {
+                    workload_large_deg++;
+                    word_t word = bitmap.getWord(word_indexes[v][i]) & words[v][i];
+                    cn_count += popcnt(&word, sizeof(word_t));
+                }
                 for (auto offset = row_ptrs_beg[v]; offset < row_ptrs_end[v + 1]; offset++) {
                     workload++;
                     auto w = g.adj[offset];
@@ -59,6 +90,10 @@ inline size_t CountTriBMPWithPack(graph_t &g, int max_omp_threads) {
             for (auto edge_idx = row_ptrs_beg[u]; edge_idx < row_ptrs_end[u + 1]; edge_idx++) {
                 auto v = g.adj[edge_idx];
                 bits_vec[v] = false;
+            }
+            for (size_t i = 0; i < word_indexes[u].size(); i++) {
+//                assert(word_indexes[u][i] < 32768 / word_in_bits);
+                bitmap.setWord(word_indexes[u][i], 0);
             }
         }
     }
