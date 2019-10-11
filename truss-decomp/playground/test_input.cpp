@@ -64,25 +64,28 @@ int main(int argc, char *argv[]) {
 #endif
         log_info("Finish Sort, %.9lfs", timer.elapsed());
 
+//#define NAIVE_REMOVE_DUPLICATE
 #ifndef NAIVE_REMOVE_DUPLICATE
         auto *relative_off = (uint32_t *) malloc(sizeof(uint32_t) * num_edges);
         Edge *edge_lst2 = (Edge *) malloc(sizeof(Edge) * num_edges);
         auto histogram = vector<uint32_t>((max_omp_threads + 1) * CACHE_LINE_ENTRY, 0);
+#pragma omp parallel
         FlagPrefixSumOMP(histogram, relative_off, num_edges, [edge_lst](uint32_t it) {
-            return it > 0 && edge_lst[it - 1] == edge_lst[it];
+            return edge_lst[it].first == edge_lst[it].second || (it > 0 && edge_lst[it - 1] == edge_lst[it]);
         }, max_omp_threads);
         // Scatter edge list properties.
 #pragma omp for
         for (auto i = 0u; i < num_edges; i++) {
-            if (!(i > 0 && edge_lst[i - 1] == edge_lst[i])) {
+            if (!(edge_lst[i].first == edge_lst[i].second || (i > 0 && edge_lst[i - 1] == edge_lst[i]))) {
                 auto off = i - relative_off[i];
                 edge_lst2[off] = edge_lst[i];
             }
         }
+        edge_lst = edge_lst2;
+        num_edges = num_edges - relative_off[num_edges - 1];
 #else
         vector<Edge> edges2;
-        edge_lst = edge_lst2;
-        num_edges = relative_off[num_edges - 1];
+
         auto last_u = -1;
         auto last_v = -1;
         for (auto i = 0u; i < num_edges; i++) {
