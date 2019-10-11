@@ -1,6 +1,6 @@
 CXX = g++
 RM = rm
-CXXFLAGS = -O3 -fopenmp -lpthread
+CXXFLAGS = -O3 -fopenmp -lpthread -std=c++11
 
 .PHONY: clean
 

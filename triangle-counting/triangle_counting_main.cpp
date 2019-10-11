@@ -162,9 +162,10 @@ int main(int argc, char *argv[]) {
                                        MAP_PRIVATE | MAP_POPULATE, file_fd, 0);
 
         // Remove Multi-Edges and Self-Loops.
-//        Edge *prev_edge_lst = edge_lst;
-//        auto prev_num_edges = num_edges;
+        Edge *prev_edge_lst = edge_lst;
         auto max_node_id = RemoveDuplicates(edge_lst, num_edges);
+        munmap(prev_edge_lst, size);
+
         auto num_vertices = static_cast<uint32_t >(max_node_id) + 1;
         log_info("load edge list bin time: %.9lf s", global_timer.elapsed());
 
@@ -177,6 +178,7 @@ int main(int argc, char *argv[]) {
 
         auto max_omp_threads = omp_get_max_threads();
         ConvertEdgeListToCSR(num_edges, edge_lst, num_vertices, deg_lst, g.row_ptrs, g.adj, max_omp_threads);
+        free(edge_lst);
         assert(g.row_ptrs[num_vertices] == 2 * num_edges);
 
         vector<int32_t> new_dict;
