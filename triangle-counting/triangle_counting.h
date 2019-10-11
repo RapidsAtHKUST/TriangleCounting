@@ -17,7 +17,7 @@ inline size_t CountTriBMPWithPack(graph_t &g, int max_omp_threads) {
     using word_t = uint64_t;
     constexpr int word_in_bits = sizeof(word_t) * 8;
     vector<vector<uint16_t>> word_indexes(g.n);   // 65536 * bits-sizeof(word)
-    vector<vector<uint64_t>> words(g.n);
+    vector<vector<word_t>> words(g.n);
 
 #pragma omp parallel num_threads(max_omp_threads)
     {
@@ -32,10 +32,10 @@ inline size_t CountTriBMPWithPack(graph_t &g, int max_omp_threads) {
         }
 #pragma omp single
         {
-            log_info("finish init row_ptrs_end, max d: %d", max_d);
+            log_info("finish init row_ptrs_end, max d: %d, time: %.9lfs", max_d, tc_timer.elapsed());
         }
 
-        // Construct Words for Range [0, 32768)
+        // Construct Words for Range [0, 32768), at most 512 words (given each word 64 bits)
 #pragma omp for schedule(dynamic, 100)
         for (auto u = 0u; u < g.n; u++) {
             auto prev_blk_id = -1;
@@ -59,9 +59,10 @@ inline size_t CountTriBMPWithPack(graph_t &g, int max_omp_threads) {
         for (auto u = 0u; u < g.n; u++) {
             // Set.
             BoolArray<word_t> bitmap(threshold);
+            BoolArray<uint32_t> word_existence(threshold / word_in_bits);
             for (size_t i = 0; i < word_indexes[u].size(); i++) {
-                assert(word_indexes[u][i] < 32768 / word_in_bits);
                 bitmap.setWord(word_indexes[u][i], words[u][i]);
+                word_existence.set(word_indexes[u][i]);
             }
             for (auto edge_idx = row_ptrs_beg[u]; edge_idx < row_ptrs_end[u + 1]; edge_idx++) {
                 auto v = g.adj[edge_idx];
@@ -71,15 +72,22 @@ inline size_t CountTriBMPWithPack(graph_t &g, int max_omp_threads) {
                 auto v = g.adj[edge_idx];
                 auto cn_count = 0;
                 for (size_t i = 0; i < word_indexes[v].size(); i++) {
+#ifdef WORKLOAD_STAT
                     workload_large_deg++;
-                    word_t word = bitmap.getWord(word_indexes[v][i]) & words[v][i];
-                    cn_count += popcnt(&word, sizeof(word_t));
+#endif
+                    if (word_existence.get(word_indexes[v][i])) {
+                        word_t word = bitmap.getWord(word_indexes[v][i]) & words[v][i];
+                        cn_count += popcnt(&word, sizeof(word_t));
+                    }
                 }
                 for (auto offset = row_ptrs_beg[v]; offset < row_ptrs_end[v + 1]; offset++) {
+#ifdef WORKLOAD_STAT
                     workload++;
+#endif
                     auto w = g.adj[offset];
+#ifdef WORKLOAD_STAT
                     workload_large_deg += w < threshold ? 1 : 0;
-
+#endif
                     if (bits_vec[w]) {
                         cn_count++;
                     }
@@ -92,21 +100,22 @@ inline size_t CountTriBMPWithPack(graph_t &g, int max_omp_threads) {
                 bits_vec[v] = false;
             }
             for (size_t i = 0; i < word_indexes[u].size(); i++) {
-//                assert(word_indexes[u][i] < 32768 / word_in_bits);
                 bitmap.setWord(word_indexes[u][i], 0);
             }
+            word_existence.reset();
         }
     }
     free(row_ptrs_beg);
     free(row_ptrs_end);
-    log_info("Forward cost: %.3lf s, Mem Usage: %d KB",
-             tc_timer.elapsed(), getValue());
+    log_info("Forward cost: %.3lf s, Mem Usage: %d KB", tc_timer.elapsed(), getValue());
     log_info("Triangle Cnt: %'zu", tc_cnt);
+#ifdef WORKLOAD_STAT
     log_info("Workload: %s, avg: %s", FormatWithCommas(workload).c_str(),
              FormatWithCommas(workload / (g.m / 2)).c_str());
     log_info("Workload (large-deg vid in [0, %d]): %s, avg: %s", threshold,
              FormatWithCommas(workload_large_deg).c_str(),
              FormatWithCommas(workload_large_deg / (g.m / 2)).c_str());
+#endif
     return tc_cnt;
 }
 
