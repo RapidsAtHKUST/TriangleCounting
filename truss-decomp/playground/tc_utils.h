@@ -11,20 +11,20 @@ typedef struct {
     long m;
 
     int32_t *adj;
-    uint32_t *num_edges;
+    uint32_t *row_ptrs;
 } graph_t;
 
 inline int FindSrc(graph_t *g, int u, uint32_t edge_idx) {
-    if (edge_idx >= g->num_edges[u + 1]) {
+    if (edge_idx >= g->row_ptrs[u + 1]) {
         // update last_u, preferring galloping instead of binary search because not large range here
-        u = GallopingSearch(g->num_edges, static_cast<uint32_t>(u) + 1, g->n + 1, edge_idx);
+        u = GallopingSearch(g->row_ptrs, static_cast<uint32_t>(u) + 1, g->n + 1, edge_idx);
         // 1) first > , 2) has neighbor
-        if (g->num_edges[u] > edge_idx) {
-            while (g->num_edges[u] - g->num_edges[u - 1] == 0) { u--; }
+        if (g->row_ptrs[u] > edge_idx) {
+            while (g->row_ptrs[u] - g->row_ptrs[u - 1] == 0) { u--; }
             u--;
         } else {
-            // g->num_edges[u] == i
-            while (g->num_edges[u + 1] - g->num_edges[u] == 0) {
+            // g->row_ptrs[u] == i
+            while (g->row_ptrs[u + 1] - g->row_ptrs[u] == 0) {
                 u++;
             }
         }
@@ -52,22 +52,22 @@ inline int ComputeSupport(graph_t *g, size_t &tc_cnt, uint32_t i) {
     if (last_u != u) {
         // clear previous
         if (last_u != -1) {
-            for (auto offset = g->num_edges[last_u]; offset < g->num_edges[last_u + 1]; offset++) {
+            for (auto offset = g->row_ptrs[last_u]; offset < g->row_ptrs[last_u + 1]; offset++) {
                 bits_vec[g->adj[offset]] = false;
             }
         }
-        for (auto offset = g->num_edges[u]; offset < g->num_edges[u + 1]; offset++) {
+        for (auto offset = g->row_ptrs[u]; offset < g->row_ptrs[u + 1]; offset++) {
             bits_vec[g->adj[offset]] = true;
         }
         last_u = u;
     }
     auto v = g->adj[i];
-    auto du = g->num_edges[u + 1] - g->num_edges[u];
-    auto dv = g->num_edges[v + 1] - g->num_edges[v];
+    auto du = g->row_ptrs[u + 1] - g->row_ptrs[u];
+    auto dv = g->row_ptrs[v + 1] - g->row_ptrs[v];
 
     auto cnt = 0;
     if (du > dv || ((du == dv) && (u < v))) {
-        cnt = ComputeCNHashBitVec(g, g->num_edges[v], g->num_edges[v + 1], bits_vec);
+        cnt = ComputeCNHashBitVec(g, g->row_ptrs[v], g->row_ptrs[v + 1], bits_vec);
         tc_cnt += cnt;
     }
     return cnt;
