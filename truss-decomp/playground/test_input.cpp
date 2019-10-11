@@ -5,90 +5,20 @@
 
 #include <chrono>
 #include <cassert>
-#include <unordered_map>
-#include <unordered_set>
 
 #include <omp.h>
 
 #include "util/file_system/file_util.h"
 #include "util/log.h"
 #include "util/program_options/popl.h"
-#include "util/search_util.h"
 #include "util/sort/parasort_cmp.h"
 #include "util/timer.h"
-
-#define ATOMIC
+#include "tc_utils.h"
+#include "primitives.h"
 
 using namespace std;
 using namespace popl;
 using namespace std::chrono;
-
-typedef struct {
-    long n;
-    long m;
-
-    int32_t *adj;
-    uint32_t *num_edges;
-} graph_t;
-
-inline int FindSrc(graph_t *g, int u, uint32_t edge_idx) {
-    if (edge_idx >= g->num_edges[u + 1]) {
-        // update last_u, preferring galloping instead of binary search because not large range here
-        u = GallopingSearch(g->num_edges, static_cast<uint32_t>(u) + 1, g->n + 1, edge_idx);
-        // 1) first > , 2) has neighbor
-        if (g->num_edges[u] > edge_idx) {
-            while (g->num_edges[u] - g->num_edges[u - 1] == 0) { u--; }
-            u--;
-        } else {
-            // g->num_edges[u] == i
-            while (g->num_edges[u + 1] - g->num_edges[u] == 0) {
-                u++;
-            }
-        }
-    }
-    return u;
-}
-
-template<typename T>
-int ComputeCNHashBitVec(graph_t *g, uint32_t offset_beg, uint32_t offset_end, T &neighbor_bits) {
-    auto cn_count = 0;
-    for (auto offset = offset_beg; offset < offset_end; offset++) {
-        if (neighbor_bits[g->adj[offset]]) {
-            cn_count++;
-        }
-    }
-    return cn_count;
-}
-
-inline int ComputeSupport(graph_t *g, size_t &tc_cnt, uint32_t i) {
-    static thread_local auto u = 0;
-    u = FindSrc(g, u, i);
-    static thread_local auto last_u = -1;
-    static thread_local auto bits_vec = vector<bool>(g->n, false);
-
-    if (last_u != u) {
-        // clear previous
-        if (last_u != -1) {
-            for (auto offset = g->num_edges[last_u]; offset < g->num_edges[last_u + 1]; offset++) {
-                bits_vec[g->adj[offset]] = false;
-            }
-        }
-        for (auto offset = g->num_edges[u]; offset < g->num_edges[u + 1]; offset++) {
-            bits_vec[g->adj[offset]] = true;
-        }
-        last_u = u;
-    }
-    auto v = g->adj[i];
-    auto du = g->num_edges[u + 1] - g->num_edges[u];
-    auto dv = g->num_edges[v + 1] - g->num_edges[v];
-
-    auto cnt = 0;
-    if (du > dv || ((du == dv) && (u < v))) {
-        cnt = ComputeCNHashBitVec(g, g->num_edges[v], g->num_edges[v + 1], bits_vec);
-        tc_cnt += cnt;
-    }
-    return cnt;
-}
 
 int main(int argc, char *argv[]) {
     OptionParser op("Allowed options");
@@ -115,13 +45,14 @@ int main(int argc, char *argv[]) {
                 swap(edge_lst[i].first, edge_lst[i].second);
             }
         }
+        auto max_omp_threads = omp_get_max_threads();
 #ifndef BASELINE_SORT
         parasort(num_edges, edge_lst, [](const pair<int32_t, int32_t> &left, const pair<int32_t, int32_t> &right) {
             if (left.first == right.first) {
                 return left.second < right.second;
             }
             return left.first < right.first;
-        }, omp_get_max_threads());
+        }, max_omp_threads);
 #else
         sort(edge_lst, edge_lst + num_edges,
              [](const pair<int32_t, int32_t> &left, const pair<int32_t, int32_t> &right) {
@@ -132,34 +63,30 @@ int main(int argc, char *argv[]) {
              });
 #endif
         log_info("Finish Sort, %.9lfs", timer.elapsed());
-        auto last_u = -1;
-        auto last_v = -1;
-        vector<Edge> edges2;
 
-#ifdef VERIFY_TABLE
-        int32_t tmp = -1;
-        for (uint32_t i = 0; i < num_edges; i++) {
-            tmp = max(tmp, max(edge_lst[i].first, edge_lst[i].second));
-        }
-        vector<unordered_set<int32_t >> tables(tmp + 1);
+#ifndef NAIVE_REMOVE_DUPLICATE
+        auto *relative_off = (uint32_t *) malloc(sizeof(uint32_t) * num_edges);
+        Edge *edge_lst2 = (Edge *) malloc(sizeof(Edge) * num_edges);
+        auto histogram = vector<uint32_t>((max_omp_threads + 1) * CACHE_LINE_ENTRY, 0);
+        FlagPrefixSumOMP(histogram, relative_off, num_edges, [edge_lst](uint32_t it) {
+            return it > 0 && edge_lst[it - 1] == edge_lst[it];
+        }, max_omp_threads);
+        // Scatter edge list properties.
+#pragma omp for
         for (auto i = 0u; i < num_edges; i++) {
-            auto edge = edge_lst[i];
-            if (edge.first != edge.second) {
-                tables[min(edge.first, edge.second)].emplace(max(edge.first, edge.second));
+            if (!(i > 0 && edge_lst[i - 1] == edge_lst[i])) {
+                auto off = i - relative_off[i];
+                edge_lst2[off] = edge_lst[i];
             }
         }
-        size_t gt_size = 0;
-        for (auto &table:tables) {
-            gt_size += table.size();
-        }
-        log_info("GT edge#: %zu", gt_size);
-#endif
+#else
+        vector<Edge> edges2;
+        edge_lst = edge_lst2;
+        num_edges = relative_off[num_edges - 1];
+        auto last_u = -1;
+        auto last_v = -1;
         for (auto i = 0u; i < num_edges; i++) {
-
             auto edge = edge_lst[i];
-//            if (i < 10) {
-//                log_info("%d, %d", edge.first, edge.second);
-//            }
             if (edge.first != last_u) {
                 last_u = edge.first;
                 last_v = edge.second;
@@ -175,6 +102,7 @@ int main(int argc, char *argv[]) {
         }
         edge_lst = &edges2.front();
         num_edges = edges2.size();
+#endif
         log_info("New # of edges: %zu", num_edges);
 
         int32_t max_node_id = -1;
@@ -187,9 +115,7 @@ int main(int argc, char *argv[]) {
                  duration_cast<milliseconds>(load_end - load_start).count() / 1000.0);
 
         auto start = high_resolution_clock::now();
-#if defined(LOCKS)
-        omp_lock_t *locks;
-#endif
+
 #pragma omp parallel
         {
             // 1st: get the cardinality of degree array
@@ -229,7 +155,7 @@ int main(int argc, char *argv[]) {
                 } while (!__sync_bool_compare_and_swap(&(deg_lst[dst]), cur_deg_src, inc_deg_val));
             }
 
-            // 3rd: compute prefix_sum and then scatter
+            // 3rd: compute relative_off and then scatter
 #pragma omp single
             {
                 for (int i = 0; i < deg_lst.size(); i++) {
@@ -247,20 +173,6 @@ int main(int argc, char *argv[]) {
                 cur_write_off = off;
             }
 
-#pragma omp single nowait
-            {
-#if defined(LOCKS)
-                locks = new omp_lock_t[deg_lst.size()];
-#endif
-            }
-
-#if defined(LOCKS)
-#pragma omp for
-            for (int i = 0; i < deg_lst.size(); i++) {
-                omp_init_lock(&locks[i]);
-            }
-#endif
-
             // 4th: barrier before we do the computation, and then construct destination vertices in CSR
 #pragma omp single
             {
@@ -275,7 +187,6 @@ int main(int argc, char *argv[]) {
                 auto dst = edge_lst[i].second;
 
                 uint32_t new_offset, old_offset;
-#if defined(ATOMIC)
                 do {
                     old_offset = cur_write_off[src];
                     new_offset = old_offset + 1;
@@ -287,23 +198,6 @@ int main(int argc, char *argv[]) {
                     new_offset = old_offset + 1;
                 } while (!__sync_bool_compare_and_swap(&(cur_write_off[dst]), old_offset, new_offset));
                 adj_lst[old_offset] = src;
-#elif defined(LOCKS)
-                omp_set_lock(&locks[src]);
-old_offset = cur_write_off[src];
-new_offset = old_offset + 1;
-cur_write_off[src] = new_offset;
-omp_unset_lock(&locks[src]);
-
-adj_lst[old_offset] = dst;
-
-omp_set_lock(&locks[dst]);
-old_offset = cur_write_off[dst];
-new_offset = old_offset + 1;
-cur_write_off[dst] = new_offset;
-omp_unset_lock(&locks[dst]);
-
-adj_lst[old_offset] = src;
-#endif
             }
 #pragma omp single
             {
