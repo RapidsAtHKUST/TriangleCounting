@@ -121,18 +121,6 @@ build_truss_algorithm(pkt-radix-shrink PKT_MARK=1 "${PKT_RADIX_HASH_SHRINK_FILES
 
 ################################################################
 
-################## Experimental of Pre-Processing and Support Initialization ################################
-build_eid_ours(pkt-eid-parallel "EID_TEST=1" pkt_merge.cpp)
-build_eid_ours(pkt-eid-parallel-seq-scan "EID_TEST=1;SEQ_SCAN=1" pkt_merge.cpp)
-build_eid_ours(pkt-eid-parallel-rev "EID_TEST=1;REVERSE=1" pkt_merge.cpp)
-add_executable(pkt-varying-wpt exp_varying_parameters/main_eval_tc_varing_wpt.cpp)
-target_link_libraries(pkt-varying-wpt PRIVATE graph-pre-processing)
-
-build_eval_tc(pkt-eval-tc-baseline "" "")
-build_eval_tc(pkt-eval-tc-dtc "DTC=1" "")
-build_eval_tc(pkt-eval-tc-wp "WP=1" "")
-################################################################
-
 if (PLAYGROUND)
     add_subdirectory(playground)
 endif ()
@@ -149,3 +137,5 @@ target_compile_definitions(edge_list_to_csr_performance_measure_double_dir PRIVA
 add_executable(edge_list_to_csr_performance_measure_deg_descending
         util/converter/edge_list_to_csr_performance_measure_deg_descending.cpp
         util/converter/pscan_graph.cpp util/converter/output_util.cpp)
+
+add_executable(remove_duplicates util/converter/remove_duplicates.cpp)
