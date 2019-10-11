@@ -8,4 +8,6 @@ make
 
 ## Run
 
-./tc -f input_file
+```bash
+./tc -f input_file_path
+```

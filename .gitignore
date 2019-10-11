@@ -1,6 +1,7 @@
 cmake-build-debug
 bak
 .idea
+*.zip
 # Prerequisites
 *.d
 
