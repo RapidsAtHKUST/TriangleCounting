@@ -20,6 +20,83 @@ using namespace std;
 using namespace popl;
 using namespace std::chrono;
 
+template<typename T, typename I>
+void RemoveDuplicates(pair<T, T> *&edge_lst, I &num_edges) {
+    using Edge = pair<T, T>;
+    Timer timer;
+#pragma omp parallel for
+    for (auto i = 0u; i < num_edges; i++) {
+        if (edge_lst[i].first > edge_lst[i].second) {
+            swap(edge_lst[i].first, edge_lst[i].second);
+        }
+    }
+    auto max_omp_threads = omp_get_max_threads();
+//#define BASELINE_SORT
+#ifndef BASELINE_SORT
+    parasort(num_edges, edge_lst, [](const Edge &left, const Edge &right) {
+        if (left.first == right.first) {
+            return left.second < right.second;
+        }
+        return left.first < right.first;
+    }, max_omp_threads);
+#else
+    sort(edge_lst, edge_lst + num_edges,
+         [](const Edge &left, const Edge &right) {
+             if (left.first == right.first) {
+                 return left.second < right.second;
+             }
+             return left.first < right.first;
+         });
+#endif
+    log_info("Finish Sort, %.9lfs", timer.elapsed());
+
+//#define NAIVE_REMOVE_DUPLICATE
+#ifndef NAIVE_REMOVE_DUPLICATE
+    auto *relative_off = (uint32_t *) malloc(sizeof(uint32_t) * num_edges);
+    Edge *edge_lst2 = (Edge *) malloc(sizeof(Edge) * num_edges);
+    auto histogram = vector<uint32_t>((max_omp_threads + 1) * CACHE_LINE_ENTRY, 0);
+#pragma omp parallel
+    {
+        FlagPrefixSumOMP(histogram, relative_off, num_edges, [edge_lst](uint32_t it) {
+            return edge_lst[it].first == edge_lst[it].second || (it > 0 && edge_lst[it - 1] == edge_lst[it]);
+        }, max_omp_threads);
+#pragma omp for
+        for (auto i = 0u; i < num_edges; i++) {
+            if (!(edge_lst[i].first == edge_lst[i].second || (i > 0 && edge_lst[i - 1] == edge_lst[i]))) {
+                auto off = i - relative_off[i];
+                edge_lst2[off] = edge_lst[i];
+            }
+        }
+    }
+
+    edge_lst = edge_lst2;
+    num_edges = num_edges - relative_off[num_edges - 1];
+#else
+    vector<Edge> edges2;
+
+    auto last_u = -1;
+    auto last_v = -1;
+    for (auto i = 0u; i < num_edges; i++) {
+        auto edge = edge_lst[i];
+        if (edge.first != last_u) {
+            last_u = edge.first;
+            last_v = edge.second;
+            if (edge.first != edge.second)
+                edges2.emplace_back(edge);
+        } else {
+            if (edge.second != last_v) {
+                last_v = edge.second;
+                if (edge.first != edge.second)
+                    edges2.emplace_back(edge);
+            }
+        }
+    }
+    edge_lst = &edges2.front();
+    num_edges = edges2.size();
+#endif
+    log_info("New # of edges: %zu, Elapsed: %.9lfs", num_edges, timer.elapsed());
+}
+
 int main(int argc, char *argv[]) {
     OptionParser op("Allowed options");
     auto string_option = op.add<Value<std::string>>("f", "file-path", "the graph bin file path");
@@ -38,75 +115,7 @@ int main(int argc, char *argv[]) {
         auto file_fd = open(file_name.c_str(), O_RDONLY, S_IRUSR | S_IWUSR);
         Edge *edge_lst =
                 (Edge *) mmap(0, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_POPULATE, file_fd, 0);
-        Timer timer;
-#pragma omp parallel for
-        for (auto i = 0u; i < num_edges; i++) {
-            if (edge_lst[i].first > edge_lst[i].second) {
-                swap(edge_lst[i].first, edge_lst[i].second);
-            }
-        }
-        auto max_omp_threads = omp_get_max_threads();
-#ifndef BASELINE_SORT
-        parasort(num_edges, edge_lst, [](const pair<int32_t, int32_t> &left, const pair<int32_t, int32_t> &right) {
-            if (left.first == right.first) {
-                return left.second < right.second;
-            }
-            return left.first < right.first;
-        }, max_omp_threads);
-#else
-        sort(edge_lst, edge_lst + num_edges,
-             [](const pair<int32_t, int32_t> &left, const pair<int32_t, int32_t> &right) {
-                 if (left.first == right.first) {
-                     return left.second < right.second;
-                 }
-                 return left.first < right.first;
-             });
-#endif
-        log_info("Finish Sort, %.9lfs", timer.elapsed());
-
-//#define NAIVE_REMOVE_DUPLICATE
-#ifndef NAIVE_REMOVE_DUPLICATE
-        auto *relative_off = (uint32_t *) malloc(sizeof(uint32_t) * num_edges);
-        Edge *edge_lst2 = (Edge *) malloc(sizeof(Edge) * num_edges);
-        auto histogram = vector<uint32_t>((max_omp_threads + 1) * CACHE_LINE_ENTRY, 0);
-#pragma omp parallel
-        FlagPrefixSumOMP(histogram, relative_off, num_edges, [edge_lst](uint32_t it) {
-            return edge_lst[it].first == edge_lst[it].second || (it > 0 && edge_lst[it - 1] == edge_lst[it]);
-        }, max_omp_threads);
-        // Scatter edge list properties.
-#pragma omp for
-        for (auto i = 0u; i < num_edges; i++) {
-            if (!(edge_lst[i].first == edge_lst[i].second || (i > 0 && edge_lst[i - 1] == edge_lst[i]))) {
-                auto off = i - relative_off[i];
-                edge_lst2[off] = edge_lst[i];
-            }
-        }
-        edge_lst = edge_lst2;
-        num_edges = num_edges - relative_off[num_edges - 1];
-#else
-        vector<Edge> edges2;
-
-        auto last_u = -1;
-        auto last_v = -1;
-        for (auto i = 0u; i < num_edges; i++) {
-            auto edge = edge_lst[i];
-            if (edge.first != last_u) {
-                last_u = edge.first;
-                last_v = edge.second;
-                if (edge.first != edge.second)
-                    edges2.emplace_back(edge);
-            } else {
-                if (edge.second != last_v) {
-                    last_v = edge.second;
-                    if (edge.first != edge.second)
-                        edges2.emplace_back(edge);
-                }
-            }
-        }
-        edge_lst = &edges2.front();
-        num_edges = edges2.size();
-#endif
-        log_info("New # of edges: %zu", num_edges);
+        RemoveDuplicates(edge_lst, num_edges);
 
         int32_t max_node_id = -1;
         vector<int32_t> deg_lst;
@@ -218,8 +227,6 @@ int main(int argc, char *argv[]) {
         auto end = high_resolution_clock::now();
         log_info("edge list to csr time: %.3lf s", duration_cast<milliseconds>(end - start).count() / 1000.0);
 
-//        vector<uint32_t> off;
-//        vector<int32_t> adj_lst;
         graph_t g;
         g.n = off.size() - 1;
         g.m = adj_lst.size();
