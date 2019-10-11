@@ -13,6 +13,8 @@
 #include "util/program_options/popl.h"
 #include "util/sort/parasort_cmp.h"
 #include "util/timer.h"
+#include "util/stat.h"
+#include "util/util.h"
 
 #include "tc_utils.h"
 #include "primitives.h"
@@ -173,21 +175,65 @@ int main(int argc, char *argv[]) {
         g.n = num_vertices;
         g.m = 2L * num_edges;
         uint32_t *deg_lst;
+        log_info("graph :%lld, %lld", g.n, g.m);
 
         auto max_omp_threads = omp_get_max_threads();
         ConvertEdgeListToCSR(num_edges, edge_lst, num_vertices, deg_lst, g.row_ptrs, g.adj, max_omp_threads);
         assert(g.row_ptrs[num_vertices] == 2 * num_edges);
 
-        vector<int32_t > new_dict;
-        vector<int32_t > old_dict;
+        vector<int32_t> new_dict;
+        vector<int32_t> old_dict;
         ReorderDegDescending(g, new_dict, old_dict);
 
         // All-Edge Triangle Counting.
         size_t tc_cnt = 0;
+        int max_d = 0;
+#ifdef BASELINE
 #pragma omp parallel for schedule(dynamic, 6000) reduction(+:tc_cnt)
         for (auto i = 0u; i < g.m; i++)
             ComputeSupport(&g, tc_cnt, i);
-        log_info("graph :%lld, %lld", g.n, g.m);
-        log_info("There are %zu triangles in the input graph.", tc_cnt / 3);
+        tc_cnt /=3;
+#else
+        Timer tc_timer;
+
+        auto *row_ptrs_end = (uint32_t *) malloc(sizeof(uint32_t) * (g.n + 1));
+#pragma omp parallel num_threads(max_omp_threads)
+        {
+            // Bit vectors.
+            auto bits_vec = vector<bool>(g.n, false);
+#pragma omp for reduction(max: max_d)
+            for (auto u = 0u; u < g.n; u++) {
+                row_ptrs_end[u + 1] = static_cast<uint32_t>(
+                        lower_bound(g.adj + g.row_ptrs[u], g.adj + g.row_ptrs[u + 1], u) - g.adj);
+                max_d = max<int>(max_d, row_ptrs_end[u + 1] - g.row_ptrs[u]);
+            }
+#pragma omp single
+            log_info("finish init row_ptrs_end, max d: %d", max_d);
+
+#pragma omp for schedule(dynamic, 100) reduction(+:tc_cnt)
+            for (auto u = 0u; u < g.n; u++) {
+                // Set.
+                for (auto edge_idx = g.row_ptrs[u]; edge_idx < row_ptrs_end[u + 1]; edge_idx++) {
+                    auto v = g.adj[edge_idx];
+                    bits_vec[v] = true;
+                }
+                for (auto edge_idx = g.row_ptrs[u]; edge_idx < row_ptrs_end[u + 1]; edge_idx++) {
+                    auto v = g.adj[edge_idx];
+                    tc_cnt += ComputeCNHashBitVec(&g, g.row_ptrs[v], row_ptrs_end[v + 1], bits_vec);
+                }
+                // Clear.
+                for (auto edge_idx = g.row_ptrs[u]; edge_idx < row_ptrs_end[u + 1]; edge_idx++) {
+                    auto v = g.adj[edge_idx];
+                    bits_vec[v] = false;
+                }
+            }
+        }
+        free(row_ptrs_end);
+        log_info("Forward cost: %.3lf s, Mem Usage: %s KB",
+                 tc_timer.elapsed(), FormatWithCommas(getValue()).c_str());
+        log_info("Triangle Cnt: %s", FormatWithCommas(tc_cnt).c_str());
+#endif
+
+        log_info("There are %zu triangles in the input graph.", tc_cnt);
     }
 }

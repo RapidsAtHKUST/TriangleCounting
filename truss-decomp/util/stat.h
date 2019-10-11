@@ -5,7 +5,6 @@
 #include <cstdio>
 #include <cstring>
 
-#include "graph.h"
 #include "log.h"
 
 extern int parseLine(char *line);
