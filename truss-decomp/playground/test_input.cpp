@@ -178,6 +178,10 @@ int main(int argc, char *argv[]) {
         ConvertEdgeListToCSR(num_edges, edge_lst, num_vertices, deg_lst, g.row_ptrs, g.adj, max_omp_threads);
         assert(g.row_ptrs[num_vertices] == 2 * num_edges);
 
+        vector<int32_t > new_dict;
+        vector<int32_t > old_dict;
+        ReorderDegDescending(g, new_dict, old_dict);
+
         // All-Edge Triangle Counting.
         size_t tc_cnt = 0;
 #pragma omp parallel for schedule(dynamic, 6000) reduction(+:tc_cnt)
