@@ -5,9 +5,12 @@
 
 #include <omp.h>
 
+#include "local_buffer.h"
+
 using namespace std;
 
 #define CACHE_LINE_ENTRY (16)
+#define LOCAL_BUDGET (8*1024*1024)
 
 /*
  * Both Primitives Are Inclusive
@@ -150,5 +153,81 @@ void BucketSort(vector<uint32_t> &histogram, T *&input, T *&output,
     {
         if (timer != nullptr)log_info("Before Sort, Time: %.9lfs", timer->elapsed());
     }
+#pragma omp barrier
+}
+
+template<typename T, typename O, typename F>
+void BucketSortSmallBuckets(vector<uint32_t> &histogram, T *&input, T *&output,
+                            O *&cur_write_off, O *&bucket_ptrs,
+                            size_t size, int32_t num_buckets, F f, int max_omp_threads, Timer *timer = nullptr) {
+    int tid = omp_get_thread_num();
+    using BufT= LocalWriteBuffer<T, uint32_t>;
+    auto cap = max<int>(CACHE_LINE_ENTRY, LOCAL_BUDGET / num_buckets / sizeof(T));
+    auto bucket_write_buffers = (BufT *) malloc(num_buckets * sizeof(BufT));
+    auto bucket_buffers = (T *) malloc(cap * num_buckets * sizeof(T));
+    auto counter = (int *) calloc(num_buckets, sizeof(int));
+    // Populate.
+#pragma omp single
+    {
+        bucket_ptrs = (uint32_t *) malloc(sizeof(O) * (num_buckets + 1));
+        cur_write_off = (uint32_t *) malloc(sizeof(O) * (num_buckets + 1));
+        cur_write_off[0] = 0;
+    }
+    {
+        size_t task_num = num_buckets + 1;
+        size_t avg = (task_num + max_omp_threads - 1) / max_omp_threads;
+        auto it_beg = avg * tid;
+        auto it_end = min(avg * (tid + 1), task_num);
+        memset(bucket_ptrs + it_beg, 0, sizeof(O) * (it_end - it_beg));
+#pragma omp barrier
+    }
+    // Histogram.
+#pragma omp for
+    for (size_t i = 0u; i < size; i++) {
+        counter[f(i)]++;
+    }
+    for (auto i = 0; i < num_buckets; i++) {
+        if (counter[i] > 0)
+            __sync_fetch_and_add(&(bucket_ptrs[i]), counter[i]);
+    }
+#pragma omp barrier
+    InclusivePrefixSumOMP(histogram, cur_write_off + 1, num_buckets, [&bucket_ptrs](uint32_t it) {
+        return bucket_ptrs[it];
+    }, max_omp_threads);
+
+    {
+        size_t task_num = num_buckets + 1;
+        size_t avg = (task_num + max_omp_threads - 1) / max_omp_threads;
+        auto it_beg = avg * tid;
+        auto it_end = min(avg * (tid + 1), task_num);
+        memcpy(bucket_ptrs + it_beg, cur_write_off + it_beg, sizeof(uint32_t) * (it_end - it_beg));
+#pragma omp barrier
+    }
+#pragma omp single
+    {
+        if (timer != nullptr)log_info("Before Scatter, Time: %.9lfs", timer->elapsed());
+    }
+    for (auto i = 0; i < num_buckets; i++) {
+        bucket_write_buffers[i] = BufT(bucket_buffers + cap * i, cap, output, &cur_write_off[i]);
+    }
+#pragma omp barrier
+    // Scatter.
+#pragma omp for
+    for (size_t i = 0u; i < size; i++) {
+        auto element = input[i];
+        auto bucket_id = f(i);
+        bucket_write_buffers[bucket_id].push(element);
+    }
+    for (auto i = 0; i < num_buckets; i++) {
+        bucket_write_buffers[i].submit_if_possible();
+    }
+#pragma omp barrier
+#pragma omp single
+    {
+        if (timer != nullptr)log_info("Before Sort, Time: %.9lfs", timer->elapsed());
+    }
+
+    free(bucket_buffers);
+    free(bucket_write_buffers);
 #pragma omp barrier
 }

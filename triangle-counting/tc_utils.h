@@ -160,7 +160,8 @@ void Reorder(graph_t &g, vector<int32_t> &new_vid_dict, vector<int32_t> &old_vid
 inline void ReorderDegDescending(graph_t &g, vector<int32_t> &new_vid_dict, vector<int32_t> &old_vid_dict,
                                  int32_t *&new_adj) {
     Timer timer;
-    
+
+#define USE_BUCKET_SORT
 #ifdef USE_BUCKET_SORT
     auto max_omp_threads = omp_get_max_threads();
     auto max_deg = 0;
@@ -184,8 +185,8 @@ inline void ReorderDegDescending(graph_t &g, vector<int32_t> &new_vid_dict, vect
             old_vid_dict_buffer[i] = i;
         }
         auto ptr = &old_vid_dict[0];
-        BucketSort(histogram, old_vid_dict_buffer, ptr, write_off, bucket_ptrs,
-                   g.n, max_deg + 1, [&g, old_vid_dict_buffer, max_deg](int i) {
+        BucketSortSmallBuckets(histogram, old_vid_dict_buffer, ptr, write_off, bucket_ptrs,
+                               g.n, max_deg + 1, [&g, old_vid_dict_buffer, max_deg](int i) {
                     auto u = old_vid_dict_buffer[i];
                     assert(u < g.n);
                     return max_deg - (g.row_ptrs[u + 1] - g.row_ptrs[u]);
