@@ -4,6 +4,7 @@
 #include "util/radix_hash_map.h"
 #include "util/libpopcnt.h"
 #include "util/set_inter_cnt_utils.h"
+#include "mipp/mipp.h"
 
 #define MAX_PACK_NUM (65536)
 
@@ -17,7 +18,7 @@ inline size_t CountTriBMPAndMergeWithPack(graph_t &g, int max_omp_threads) {
     size_t workload_large_deg = 0;
     int threshold = 32768; // word-packing for [0, 32768), otherwise normal table (using bitmap)
 
-    using word_t = uint64_t;
+    using word_t = int64_t;
     constexpr int word_in_bits = sizeof(word_t) * 8;
 
     int to_pack_num = min<int>(g.n, MAX_PACK_NUM);
@@ -88,8 +89,18 @@ inline size_t CountTriBMPAndMergeWithPack(graph_t &g, int max_omp_threads) {
 #endif
                         buffer[i] = bitmap.getWord(word_indexes[v][i]);
                     }
-                    for (size_t i = 0; i < num_words_v; i++) {
-                        buffer[i] &= words[v][i];
+                    mipp::Reg<word_t> r1, r2;
+                    static thread_local auto num_of_words = mipp::N<word_t>();
+                    size_t i = 0;
+                    auto &buffer2 = words[v];
+                    for (; i + num_of_words - 1 < num_words_v; i += num_of_words) {
+                        r1 = &buffer[i];
+                        r2 = &buffer2[i];
+                        r1 = r1 & r2;
+                        r1.store(&buffer[i]);
+                    }
+                    for (; i < num_words_v; i++) {
+                        buffer[i] &= buffer2[i];
                     }
                     cn_count += popcnt(&buffer.front(), sizeof(word_t) * num_words_v);
                 } else {
