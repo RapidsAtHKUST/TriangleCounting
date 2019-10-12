@@ -93,7 +93,8 @@ void InclusivePrefixSumOMP(vector<uint32_t> &histogram, uint32_t *output, size_t
 
 /*
  * Require an output array,
- * f: is the property for the bucket ID
+ * f: is the property for the bucket ID, given an index on the input array
+ * Inefficient when there are lots of contentions because of atomic operations
  */
 template<typename T, typename O, typename F>
 void BucketSort(vector<uint32_t> &histogram, T *&input, T *&output,
