@@ -76,7 +76,8 @@ int main(int argc, char *argv[]) {
         tc_cnt /=3;
 #else
 //        tc_cnt = CountTriBMP(g, max_omp_threads);
-        tc_cnt = CountTriBMPWithPack(g, max_omp_threads);
+//        tc_cnt = CountTriBMPWithPack(g, max_omp_threads);
+        tc_cnt = CountTriBMPAndMergeWithPack(g, max_omp_threads);
 #endif
 
         log_info("There are %zu triangles in the input graph.", tc_cnt);

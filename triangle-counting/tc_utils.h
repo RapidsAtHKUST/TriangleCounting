@@ -2,6 +2,7 @@
 
 #include <vector>
 
+#include "util/search_util.h"
 
 using namespace std;
 
@@ -13,24 +14,9 @@ typedef struct {
     uint32_t *row_ptrs;
 } graph_t;
 
-template<typename T>
-uint32_t BranchFreeBinarySearch(T *a, uint32_t offset_beg, uint32_t offset_end, T x) {
-    int32_t n = offset_end - offset_beg;
-    using I = uint32_t;
-    const T *base = a + offset_beg;
-    while (n > 1) {
-        I half = n / 2;
-        __builtin_prefetch(base + half / 2, 0, 0);
-        __builtin_prefetch(base + half + half / 2, 0, 0);
-        base = (base[half] < x) ? base + half : base;
-        n -= half;
-    }
-    return (*base < x) + base - a;
-}
-
 // Assuming (offset_beg != offset_end)
 template<typename T>
-uint32_t GallopingSearch(T *array, uint32_t offset_beg, uint32_t offset_end, T val) {
+uint32_t GallopingSearchGeneral(T *array, uint32_t offset_beg, uint32_t offset_end, T val) {
     if (offset_beg == offset_end) { return offset_end; }
     if (array[offset_end - 1] < val) {
         return offset_end;
@@ -64,7 +50,7 @@ uint32_t GallopingSearch(T *array, uint32_t offset_beg, uint32_t offset_end, T v
 inline int FindSrc(graph_t *g, int u, uint32_t edge_idx) {
     if (edge_idx >= g->row_ptrs[u + 1]) {
         // update last_u, preferring galloping instead of binary search because not large range here
-        u = GallopingSearch(g->row_ptrs, static_cast<uint32_t>(u) + 1, g->n + 1, edge_idx);
+        u = GallopingSearchGeneral(g->row_ptrs, static_cast<uint32_t>(u) + 1, g->n + 1, edge_idx);
         // 1) first > , 2) has neighbor
         if (g->row_ptrs[u] > edge_idx) {
             while (g->row_ptrs[u] - g->row_ptrs[u - 1] == 0) { u--; }

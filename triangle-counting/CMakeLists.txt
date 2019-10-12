@@ -26,4 +26,4 @@ else ()
     endif ()
 endif ()
 
-add_executable(tc triangle_counting_main.cpp util/log.cpp)
+add_executable(tc triangle_counting_main.cpp util/log.cpp util/search_util.cpp)
