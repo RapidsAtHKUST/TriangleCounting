@@ -106,35 +106,26 @@ inline int ComputeSupport(graph_t *g, size_t &tc_cnt, uint32_t i) {
     return cnt;
 }
 
-// ru < rv, u points to v
-inline bool less_than(int u, int v, int du, int dv) {
-    return du > dv || ((du == dv) && (u < v));
-}
-
 void Reorder(graph_t &g, vector<int32_t> &new_vid_dict, vector<int32_t> &old_vid_dict) {
     Timer timer;
 
     new_vid_dict = vector<int>(g.n);
-    for (auto i = 0; i < g.n; i++) {
-        new_vid_dict[old_vid_dict[i]] = i;
-    }
-    // new-deg
     vector<int> new_deg(g.n);
-    for (auto new_id = 0; new_id < g.n; new_id++) {
-        auto vertex = old_vid_dict[new_id];
-        new_deg[new_id] = g.row_ptrs[vertex + 1] - g.row_ptrs[vertex];
-        assert(new_deg[new_id] >= 0);
-    }
+    vector<int> verify_map(g.n, 0);
 
-    // verify permutation
-    for (auto i = 0; i < std::min<int32_t>(5, static_cast<int32_t>(new_vid_dict.size())); i++) {
-        log_info("old->new %d -> %d", i, new_vid_dict[i]);
-    }
-    vector<int> verify_map(new_vid_dict.size(), 0);
     int cnt = 0;
-
 #pragma omp parallel
     {
+#pragma omp for
+        for (auto i = 0; i < g.n; i++) {
+            new_vid_dict[old_vid_dict[i]] = i;
+        }
+#pragma omp for
+        for (auto new_id = 0; new_id < g.n; new_id++) {
+            auto vertex = old_vid_dict[new_id];
+            new_deg[new_id] = g.row_ptrs[vertex + 1] - g.row_ptrs[vertex];
+            assert(new_deg[new_id] >= 0);
+        }
 #pragma omp for reduction(+:cnt)
         for (auto i = 0u; i < new_vid_dict.size(); i++) {
             if (verify_map[new_vid_dict[i]] == 0) {
@@ -193,6 +184,7 @@ inline void ReorderDegDescending(graph_t &g, vector<int32_t> &new_vid_dict, vect
     Timer timer;
 
     old_vid_dict = vector<int>(g.n);
+#pragma omp parallel for
     for (auto i = 0u; i < old_vid_dict.size(); i++) { old_vid_dict[i] = i; }
 
     log_info("Use parallel sort (parasort)");
