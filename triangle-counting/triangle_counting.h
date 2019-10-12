@@ -322,11 +322,13 @@ inline size_t CountTriBMP(graph_t &g, int max_omp_threads) {
     log_info("Forward cost: %.3lf s, Mem Usage: %d KB",
              tc_timer.elapsed(), getValue());
     log_info("Triangle Cnt: %'zu", tc_cnt);
+#ifdef WORKLOAD_STAT
     log_info("Workload: %s, avg: %s", FormatWithCommas(workload).c_str(),
              FormatWithCommas(workload / (g.m / 2)).c_str());
     log_info("Workload (large-deg vid in [0, %d]): %s, avg: %s", threshold,
              FormatWithCommas(workload_large_deg).c_str(),
              FormatWithCommas(workload_large_deg / (g.m / 2)).c_str());
+#endif
     return tc_cnt;
 }
 

@@ -109,6 +109,7 @@ void ConvertEdgeListToCSR(uint32_t num_edges, pair<T, T> *edge_lst,
             old_offset = __sync_fetch_and_add(&(cur_write_off[dst]), 1);
             adj_lst[old_offset] = src;
         }
+#ifdef NO_REORDERING
 #pragma omp single
         {
             log_info("before sort time: %.9lf s", convert_timer.elapsed());
@@ -119,6 +120,7 @@ void ConvertEdgeListToCSR(uint32_t num_edges, pair<T, T> *edge_lst,
             assert(cur_write_off[u] == off[u + 1]);
             sort(adj_lst + off[u], adj_lst + off[u + 1]);
         }
+#endif
     }
     free(cur_write_off);
     log_info("edge list to csr time: %.9lf s", convert_timer.elapsed());

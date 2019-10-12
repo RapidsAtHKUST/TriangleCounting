@@ -46,7 +46,6 @@ int main(int argc, char *argv[]) {
         // Remove Multi-Edges and Self-Loops.
         Edge *prev_edge_lst = edge_lst;
         auto max_node_id = RemoveDuplicates(edge_lst, num_edges);
-        munmap(prev_edge_lst, size);
 
         auto num_vertices = static_cast<uint32_t >(max_node_id) + 1;
         log_info("load edge list bin time: %.9lf s", global_timer.elapsed());
@@ -65,7 +64,10 @@ int main(int argc, char *argv[]) {
 
         vector<int32_t> new_dict;
         vector<int32_t> old_dict;
-        ReorderDegDescending(g, new_dict, old_dict);
+        auto *tmp_mem_blocks = reinterpret_cast<int32_t *>(prev_edge_lst);
+        mlock(tmp_mem_blocks, size);
+        ReorderDegDescending(g, new_dict, old_dict, tmp_mem_blocks);
+        free(tmp_mem_blocks);
 
         // All-Edge Triangle Counting.
         size_t tc_cnt = 0;
