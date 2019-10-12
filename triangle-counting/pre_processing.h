@@ -3,13 +3,22 @@
 #include "primitives.h"
 
 template<typename T, typename I>
-T RemoveDuplicates(pair<T, T> *&edge_lst, I &num_edges) {
+T RemoveDuplicates(pair<T, T> *&edge_lst, I &num_edges, pair<T, T> *&edge_lst_buffer) {
     using Edge = pair<T, T>;
     Timer timer;
     T max_node_id = 0;
+    T num_vertices;
+    auto max_omp_threads = omp_get_max_threads();
     // Partition.
-#pragma omp parallel
+    uint32_t *final_row_ptrs;
+    uint32_t *cur_write_off;
+    auto histogram = vector<uint32_t>((max_omp_threads + 1) * CACHE_LINE_ENTRY, 0);
+
+#pragma omp parallel num_threads(max_omp_threads)
     {
+        auto tid = omp_get_thread_num();
+
+        // Compute Max V-ID.
 #pragma omp for reduction(max: max_node_id)
         for (I i = 0u; i < num_edges; i++) {
             if (edge_lst[i].first > edge_lst[i].second) {
@@ -17,20 +26,77 @@ T RemoveDuplicates(pair<T, T> *&edge_lst, I &num_edges) {
                 max_node_id = max(max_node_id, max(edge_lst[i].first, edge_lst[i].second));
             }
         }
-    }
-    auto max_omp_threads = omp_get_max_threads();
-    parasort(num_edges, edge_lst, [](const Edge &left, const Edge &right) {
-        if (left.first == right.first) {
-            return left.second < right.second;
+
+        // Populate.
+#pragma omp single
+        {
+            num_vertices = max_node_id + 1;
+            final_row_ptrs = (uint32_t *) malloc(sizeof(uint32_t) * (num_vertices + 1));
+            cur_write_off = (uint32_t *) malloc(sizeof(uint32_t) * (num_vertices + 1));
+            cur_write_off[0] = 0;
         }
-        return left.first < right.first;
-    }, max_omp_threads);
+        {
+            size_t task_num = num_vertices + 1;
+            size_t avg = (task_num + max_omp_threads - 1) / max_omp_threads;
+            auto it_beg = avg * tid;
+            auto it_end = min(avg * (tid + 1), task_num);
+            memset(final_row_ptrs + it_beg, 0, sizeof(uint32_t) * (it_end - it_beg));
+#pragma omp barrier
+        }
+
+        // Histogram.
+#pragma omp for
+        for (I i = 0u; i < num_edges; i++) {
+            __sync_fetch_and_add(&(final_row_ptrs[edge_lst[i].first]), 1);
+        }
+        InclusivePrefixSumOMP(histogram, cur_write_off + 1, num_vertices, [&final_row_ptrs](uint32_t it) {
+            return final_row_ptrs[it];
+        }, max_omp_threads);
+
+        {
+            size_t task_num = num_vertices + 1;
+            size_t avg = (task_num + max_omp_threads - 1) / max_omp_threads;
+            auto it_beg = avg * tid;
+            auto it_end = min(avg * (tid + 1), task_num);
+            memcpy(final_row_ptrs + it_beg, cur_write_off + it_beg, sizeof(uint32_t) * (it_end - it_beg));
+#pragma omp barrier
+        }
+
+#pragma omp single
+        {
+            log_info("Before Scatter, Time: %.9lfs", timer.elapsed());
+        }
+        // Scatter.
+#pragma omp for
+        for (I i = 0u; i < num_edges; i++) {
+            auto edge = edge_lst[i];
+            auto src = edge.first;
+            auto old_offset = __sync_fetch_and_add(&(cur_write_off[src]), 1);
+            edge_lst_buffer[old_offset] = edge;
+        }
+
+#pragma omp single
+        {
+            log_info("Before Sort, Time: %.9lfs", timer.elapsed());
+        }
+        // Sort.
+#pragma omp for schedule(dynamic)
+        for (auto i = 0; i < num_vertices; i++) {
+            sort(edge_lst_buffer + final_row_ptrs[i], edge_lst_buffer + final_row_ptrs[i + 1],
+                 [](const Edge &left, const Edge &right) {
+                     assert(left.first == right.first);
+                     return left.second < right.second;
+                 });
+        }
+    }
+    swap(edge_lst, edge_lst_buffer);
+    free(cur_write_off);
+    free(final_row_ptrs);
     log_info("Finish Sort, %.9lfs", timer.elapsed());
 
     // Selection.
     auto *relative_off = (uint32_t *) malloc(sizeof(uint32_t) * num_edges);
     Edge *edge_lst2 = (Edge *) malloc(sizeof(Edge) * num_edges);
-    auto histogram = vector<uint32_t>((max_omp_threads + 1) * CACHE_LINE_ENTRY, 0);
 #pragma omp parallel
     {
         FlagPrefixSumOMP(histogram, relative_off, num_edges, [edge_lst](uint32_t it) {

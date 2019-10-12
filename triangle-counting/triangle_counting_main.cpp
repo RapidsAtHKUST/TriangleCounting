@@ -42,10 +42,12 @@ int main(int argc, char *argv[]) {
         auto file_fd = open(file_name.c_str(), O_RDONLY, S_IRUSR | S_IWUSR);
         Edge *edge_lst = (Edge *) mmap(nullptr, size, PROT_READ | PROT_WRITE,
                                        MAP_PRIVATE | MAP_POPULATE, file_fd, 0);
-
+        Edge *edge_lst_buffer = (Edge *) malloc(size);
         // Remove Multi-Edges and Self-Loops.
-        Edge *prev_edge_lst = edge_lst;
-        auto max_node_id = RemoveDuplicates(edge_lst, num_edges);
+        auto max_node_id = RemoveDuplicates(edge_lst, num_edges, edge_lst_buffer);
+        log_info("Mem: %d KB", getValue());
+        munmap(edge_lst_buffer, size);
+        log_info("Mem: %d KB", getValue());
 
         auto num_vertices = static_cast<uint32_t >(max_node_id) + 1;
         log_info("load edge list bin time: %.9lf s", global_timer.elapsed());
@@ -59,15 +61,16 @@ int main(int argc, char *argv[]) {
 
         auto max_omp_threads = omp_get_max_threads();
         ConvertEdgeListToCSR(num_edges, edge_lst, num_vertices, deg_lst, g.row_ptrs, g.adj, max_omp_threads);
-        free(edge_lst);
         assert(g.row_ptrs[num_vertices] == 2 * num_edges);
 
         vector<int32_t> new_dict;
         vector<int32_t> old_dict;
-        auto *tmp_mem_blocks = reinterpret_cast<int32_t *>(prev_edge_lst);
-        mlock(tmp_mem_blocks, size);
+        auto *tmp_mem_blocks = reinterpret_cast<int32_t *>(edge_lst);
         ReorderDegDescending(g, new_dict, old_dict, tmp_mem_blocks);
+
+        log_info("Mem: %d KB", getValue());
         free(tmp_mem_blocks);
+        log_info("Mem: %d KB", getValue());
 
         // All-Edge Triangle Counting.
         size_t tc_cnt = 0;
