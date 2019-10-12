@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include <omp.h>
+
 using namespace std;
 
 #define CACHE_LINE_ENTRY (16)
@@ -88,4 +89,65 @@ void InclusivePrefixSumOMP(vector<uint32_t> &histogram, uint32_t *output, size_t
         }
 #pragma omp barrier
     }
+}
+
+/*
+ * Require an output array,
+ * f: is the property for the bucket ID
+ */
+template<typename T, typename O, typename F>
+void BucketSort(vector<uint32_t> &histogram, T *&input, T *&output,
+                O *&cur_write_off, O *&bucket_ptrs,
+                size_t size, int32_t num_buckets, F f, int max_omp_threads, Timer *timer = nullptr) {
+    int tid = omp_get_thread_num();
+
+    // Populate.
+#pragma omp single
+    {
+        bucket_ptrs = (uint32_t *) malloc(sizeof(O) * (num_buckets + 1));
+        cur_write_off = (uint32_t *) malloc(sizeof(O) * (num_buckets + 1));
+        cur_write_off[0] = 0;
+    }
+    {
+        size_t task_num = num_buckets + 1;
+        size_t avg = (task_num + max_omp_threads - 1) / max_omp_threads;
+        auto it_beg = avg * tid;
+        auto it_end = min(avg * (tid + 1), task_num);
+        memset(bucket_ptrs + it_beg, 0, sizeof(O) * (it_end - it_beg));
+#pragma omp barrier
+    }
+    // Histogram.
+#pragma omp for
+    for (size_t i = 0u; i < size; i++) {
+        __sync_fetch_and_add(&(bucket_ptrs[f(i)]), 1);
+    }
+    InclusivePrefixSumOMP(histogram, cur_write_off + 1, num_buckets, [&bucket_ptrs](uint32_t it) {
+        return bucket_ptrs[it];
+    }, max_omp_threads);
+
+    {
+        size_t task_num = num_buckets + 1;
+        size_t avg = (task_num + max_omp_threads - 1) / max_omp_threads;
+        auto it_beg = avg * tid;
+        auto it_end = min(avg * (tid + 1), task_num);
+        memcpy(bucket_ptrs + it_beg, cur_write_off + it_beg, sizeof(uint32_t) * (it_end - it_beg));
+#pragma omp barrier
+    }
+#pragma omp single
+    {
+        if (timer != nullptr)log_info("Before Scatter, Time: %.9lfs", timer->elapsed());
+    }
+    // Scatter.
+#pragma omp for
+    for (size_t i = 0u; i < size; i++) {
+        auto element = input[i];
+        auto bucket_id = f(i);
+        auto old_offset = __sync_fetch_and_add(&(cur_write_off[bucket_id]), 1);
+        output[old_offset] = element;
+    }
+#pragma omp single
+    {
+        if (timer != nullptr)log_info("Before Sort, Time: %.9lfs", timer->elapsed());
+    }
+#pragma omp barrier
 }

@@ -165,6 +165,7 @@ inline void ReorderDegDescending(graph_t &g, vector<int32_t> &new_vid_dict, vect
     for (auto i = 0u; i < old_vid_dict.size(); i++) { old_vid_dict[i] = i; }
 
     log_info("Use parallel sort (parasort)");
+    log_info("Allocation time:  %.9lf s", timer.elapsed());
     parasort(old_vid_dict.size(), &old_vid_dict.front(),
              [&g](int l, int r) -> bool {
                  return g.row_ptrs[l + 1] - g.row_ptrs[l] > g.row_ptrs[r + 1] - g.row_ptrs[r];

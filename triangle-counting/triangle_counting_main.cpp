@@ -42,6 +42,7 @@ int main(int argc, char *argv[]) {
         auto file_fd = open(file_name.c_str(), O_RDONLY, S_IRUSR | S_IWUSR);
         Edge *edge_lst = (Edge *) mmap(nullptr, size, PROT_READ | PROT_WRITE,
                                        MAP_PRIVATE | MAP_POPULATE, file_fd, 0);
+        log_info("Load File Time: %.9lfs", global_timer.elapsed());
         Edge *edge_lst_buffer = (Edge *) malloc(size);
         // Remove Multi-Edges and Self-Loops.
         auto max_node_id = RemoveDuplicates(edge_lst, num_edges, edge_lst_buffer);
@@ -57,7 +58,7 @@ int main(int argc, char *argv[]) {
         g.n = num_vertices;
         g.m = 2L * num_edges;
         uint32_t *deg_lst;
-        log_info("graph :%lld, %lld", g.n, g.m);
+        log_info("Undirected Graph G = (|V|, |E|): %lld, %lld", g.n, g.m / 2);
 
         auto max_omp_threads = omp_get_max_threads();
         ConvertEdgeListToCSR(num_edges, edge_lst, num_vertices, deg_lst, g.row_ptrs, g.adj, max_omp_threads);
