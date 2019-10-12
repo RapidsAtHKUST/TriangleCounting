@@ -63,18 +63,15 @@ inline size_t CountTriBMPWithPack(graph_t &g, int max_omp_threads) {
         for (auto u = 0u; u < g.n; u++) {
             // Set.
             static thread_local BoolArray<word_t> bitmap(threshold);
-            static thread_local BoolArray<uint32_t> word_existence(threshold / word_in_bits);
             if (u < to_pack_num) {
                 for (size_t i = 0; i < word_indexes[u].size(); i++) {
-                    assert(word_indexes[u][i] < threshold / word_in_bits);
+//                    assert(word_indexes[u][i] < threshold / word_in_bits);
                     bitmap.setWord(word_indexes[u][i], words[u][i]);
-                    word_existence.set(word_indexes[u][i]);
                 }
             } else {
                 for (auto off = g.row_ptrs[u]; off < row_ptrs_beg[u]; off++) {
                     auto w = g.adj[off];
                     bitmap.set(w);
-                    word_existence.set(w / word_in_bits);
                 }
             }
 
@@ -91,10 +88,8 @@ inline size_t CountTriBMPWithPack(graph_t &g, int max_omp_threads) {
 #ifdef WORKLOAD_STAT
                         workload_large_deg++;
 #endif
-                        if (word_existence.get(word_indexes[v][i])) {
-                            word_t word = bitmap.getWord(word_indexes[v][i]) & words[v][i];
-                            cn_count += popcnt(&word, sizeof(word_t));
-                        }
+                        word_t word = bitmap.getWord(word_indexes[v][i]) & words[v][i];
+                        cn_count += popcnt(&word, sizeof(word_t));
                     }
                 } else {
                     for (auto off = g.row_ptrs[v]; off < row_ptrs_beg[v]; off++) {
@@ -124,7 +119,6 @@ inline size_t CountTriBMPWithPack(graph_t &g, int max_omp_threads) {
                 bits_vec[v] = false;
             }
             bitmap.reset();
-            word_existence.reset();
         }
     }
     free(row_ptrs_beg);
