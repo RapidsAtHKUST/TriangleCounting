@@ -169,6 +169,7 @@ void BucketSortSmallBuckets(vector<uint32_t> &histogram, T *&input, T *&output,
     // Populate.
 #pragma omp single
     {
+        log_info("Mem Size Buckets: %zu, Bucket#: %d", cap * num_buckets * sizeof(T) * max_omp_threads, num_buckets);
         bucket_ptrs = (uint32_t *) malloc(sizeof(O) * (num_buckets + 1));
         cur_write_off = (uint32_t *) malloc(sizeof(O) * (num_buckets + 1));
         cur_write_off[0] = 0;
@@ -227,6 +228,7 @@ void BucketSortSmallBuckets(vector<uint32_t> &histogram, T *&input, T *&output,
         if (timer != nullptr)log_info("Before Sort, Time: %.9lfs", timer->elapsed());
     }
 
+    free(counter);
     free(bucket_buffers);
     free(bucket_write_buffers);
 #pragma omp barrier
