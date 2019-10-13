@@ -120,6 +120,7 @@ void Reorder(graph_t &g, vector<int32_t> &new_vid_dict, vector<int32_t> &old_vid
 
 #pragma omp parallel num_threads(max_omp_threads)
     {
+        auto tid = omp_get_thread_num();
         // 1st CSR: new_off, new_adj
 #pragma omp for
         for (auto i = 0; i < g.n; i++) {
@@ -134,7 +135,7 @@ void Reorder(graph_t &g, vector<int32_t> &new_vid_dict, vector<int32_t> &old_vid
             return new_deg[it];
         }, max_omp_threads);
 #pragma omp single
-        log_info("init ordering structures time: %.9lf s", timer.elapsed_and_reset());
+        log_info("[%s]: Finish PrefixSum Time: %.9lf s", __FUNCTION__, timer.elapsed_and_reset());
 
         // 2nd Parallel Transform
 #pragma omp for schedule(dynamic, 100)
@@ -149,12 +150,11 @@ void Reorder(graph_t &g, vector<int32_t> &new_vid_dict, vector<int32_t> &old_vid
             // sort the local ranges
             sort(new_adj + new_off[i], new_adj + new_off[i + 1]);
         }
-    }
-    log_info("parallel transform and sort: %.3lf s", timer.elapsed());
 
+        MemCpyOMP(g.row_ptrs, &new_off.front(), (g.n + 1), tid, max_omp_threads);
+    }
     swap(g.adj, new_adj);
-    memcpy(g.row_ptrs, &new_off.front(), (g.n + 1) * sizeof(uint32_t));
-    log_info("parallel transform after copying: %.3lf s", timer.elapsed());
+    log_info("[%s]: Finish Reorder Time: %.3lf s", __FUNCTION__, timer.elapsed());
 }
 
 inline void ReorderDegDescending(graph_t &g, vector<int32_t> &new_vid_dict, vector<int32_t> &old_vid_dict,

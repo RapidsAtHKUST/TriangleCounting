@@ -106,6 +106,28 @@ void SelectNotFOMP(vector<uint32_t> &histogram, T *output, T *input,
     }
 }
 
+template<typename OFF, typename F>
+void Histogram(size_t size, OFF *&bucket_ptrs, int32_t num_buckets, F f) {
+    // Histogram.
+    auto local_buf = (uint8_t *) calloc(num_buckets, sizeof(uint8_t));
+#pragma omp for
+    for (size_t i = 0u; i < size; i++) {
+        auto src = f(i);
+        local_buf[src]++;
+        if (local_buf[src] == 0xff) {
+            __sync_fetch_and_add(&bucket_ptrs[src], 0xff);
+            local_buf[src] = 0;
+        }
+    }
+    for (size_t i = 0; i < num_buckets; i++) {
+        if (local_buf[i] != 0) {
+            __sync_fetch_and_add(&bucket_ptrs[i], local_buf[i]);
+        }
+    }
+#pragma omp barrier
+    free(local_buf);
+}
+
 /*
  * Require an output array,
  * f: is the property for the bucket ID, given an index on the input array
@@ -125,25 +147,7 @@ void BucketSort(vector<uint32_t> &histogram, T *&input, T *&output,
         cur_write_off[0] = 0;
     }
     MemSetOMP(bucket_ptrs, 0, num_buckets + 1, tid, max_omp_threads);
-
-    // Histogram.
-    auto local_buf = (uint8_t *) calloc(num_buckets, sizeof(uint8_t));
-#pragma omp for
-    for (size_t i = 0u; i < size; i++) {
-        auto src = f(i);
-        local_buf[src]++;
-        if (local_buf[src] == 0xff) {
-            __sync_fetch_and_add(&bucket_ptrs[src], 0xff);
-            local_buf[src] = 0;
-        }
-    }
-    for (size_t i = 0; i < num_buckets; i++) {
-        if (local_buf[i] != 0) {
-            __sync_fetch_and_add(&bucket_ptrs[i], local_buf[i]);
-        }
-    }
-#pragma omp barrier
-    free(local_buf);
+    Histogram(size, bucket_ptrs, num_buckets, f);
 
     InclusivePrefixSumOMP(histogram, cur_write_off + 1, num_buckets, [&bucket_ptrs](uint32_t it) {
         return bucket_ptrs[it];
@@ -152,7 +156,7 @@ void BucketSort(vector<uint32_t> &histogram, T *&input, T *&output,
 
 #pragma omp single
     {
-        if (timer != nullptr)log_info("Before Scatter, Time: %.9lfs", timer->elapsed());
+        if (timer != nullptr)log_info("[%s]: Before Scatter, Time: %.9lfs", __FUNCTION__, timer->elapsed());
     }
     // Scatter.
 #pragma omp for
@@ -164,7 +168,7 @@ void BucketSort(vector<uint32_t> &histogram, T *&input, T *&output,
     }
 #pragma omp single
     {
-        if (timer != nullptr)log_info("Before Sort, Time: %.9lfs", timer->elapsed());
+        if (timer != nullptr)log_info("[%s]: Before Sort, Time: %.9lfs", __FUNCTION__, timer->elapsed());
     }
 #pragma omp barrier
 }
@@ -178,48 +182,28 @@ void BucketSortSmallBuckets(vector<uint32_t> &histogram, T *&input, T *&output,
     auto cap = max<int>(CACHE_LINE_ENTRY, LOCAL_BUDGET / num_buckets / sizeof(T));
     auto bucket_write_buffers = (BufT *) malloc(num_buckets * sizeof(BufT));
     auto bucket_buffers = (T *) malloc(cap * num_buckets * sizeof(T));
-    auto counter = (int *) calloc(num_buckets, sizeof(int));
     // Populate.
 #pragma omp single
     {
-        log_info("Mem Size Buckets: %zu, Bucket#: %d", cap * num_buckets * sizeof(T) * max_omp_threads, num_buckets);
+        log_info("[%s]: Mem Size Buckets: %zu, Bucket#: %d",
+                 __FUNCTION__,
+                 cap * num_buckets * sizeof(T) * max_omp_threads, num_buckets);
         bucket_ptrs = (uint32_t *) malloc(sizeof(OFF) * (num_buckets + 1));
         cur_write_off = (uint32_t *) malloc(sizeof(OFF) * (num_buckets + 1));
         cur_write_off[0] = 0;
     }
-    {
-        size_t task_num = num_buckets + 1;
-        size_t avg = (task_num + max_omp_threads - 1) / max_omp_threads;
-        auto it_beg = avg * tid;
-        auto it_end = min(avg * (tid + 1), task_num);
-        memset(bucket_ptrs + it_beg, 0, sizeof(OFF) * (it_end - it_beg));
-#pragma omp barrier
-    }
-    // Histogram.
-#pragma omp for
-    for (size_t i = 0u; i < size; i++) {
-        counter[f(i)]++;
-    }
-    for (auto i = 0; i < num_buckets; i++) {
-        if (counter[i] > 0)
-            __sync_fetch_and_add(&(bucket_ptrs[i]), counter[i]);
-    }
+    MemSetOMP(bucket_ptrs, 0, num_buckets + 1, tid, max_omp_threads);
+    Histogram(size, bucket_ptrs, num_buckets, f);
+
 #pragma omp barrier
     InclusivePrefixSumOMP(histogram, cur_write_off + 1, num_buckets, [&bucket_ptrs](uint32_t it) {
         return bucket_ptrs[it];
     }, max_omp_threads);
+    MemCpyOMP(bucket_ptrs, cur_write_off, num_buckets + 1, tid, max_omp_threads);
 
-    {
-        size_t task_num = num_buckets + 1;
-        size_t avg = (task_num + max_omp_threads - 1) / max_omp_threads;
-        auto it_beg = avg * tid;
-        auto it_end = min(avg * (tid + 1), task_num);
-        memcpy(bucket_ptrs + it_beg, cur_write_off + it_beg, sizeof(OFF) * (it_end - it_beg));
-#pragma omp barrier
-    }
 #pragma omp single
     {
-        if (timer != nullptr)log_info("Before Scatter, Time: %.9lfs", timer->elapsed());
+        if (timer != nullptr)log_info("[%s]: Before Scatter, Time: %.9lfs", __FUNCTION__, timer->elapsed());
     }
     for (auto i = 0; i < num_buckets; i++) {
         bucket_write_buffers[i] = BufT(bucket_buffers + cap * i, cap, output, &cur_write_off[i]);
@@ -238,10 +222,9 @@ void BucketSortSmallBuckets(vector<uint32_t> &histogram, T *&input, T *&output,
 #pragma omp barrier
 #pragma omp single
     {
-        if (timer != nullptr)log_info("Before Sort, Time: %.9lfs", timer->elapsed());
+        if (timer != nullptr)log_info("[%s]: Before Sort, Time: %.9lfs", __FUNCTION__, timer->elapsed());
     }
 
-    free(counter);
     free(bucket_buffers);
     free(bucket_write_buffers);
 #pragma omp barrier
