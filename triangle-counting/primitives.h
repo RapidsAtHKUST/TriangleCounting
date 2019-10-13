@@ -107,7 +107,7 @@ void SelectNotFOMP(vector<uint32_t> &histogram, T *output, T *input,
 }
 
 template<typename OFF, typename F>
-void Histogram(size_t size, OFF *&bucket_ptrs, int32_t num_buckets, F f) {
+void Histogram(size_t size, OFF *&bucket_ptrs, int32_t num_buckets, F f, Timer *timer = nullptr) {
     // Histogram.
     auto local_buf = (uint8_t *) calloc(num_buckets, sizeof(uint8_t));
 #pragma omp for
@@ -119,6 +119,8 @@ void Histogram(size_t size, OFF *&bucket_ptrs, int32_t num_buckets, F f) {
             local_buf[src] = 0;
         }
     }
+#pragma omp single
+    if (timer != nullptr)log_info("[%s]: Local Comp Time: %.9lfs", __FUNCTION__, timer->elapsed());
     for (size_t i = 0; i < num_buckets; i++) {
         if (local_buf[i] != 0) {
             __sync_fetch_and_add(&bucket_ptrs[i], local_buf[i]);
@@ -126,6 +128,16 @@ void Histogram(size_t size, OFF *&bucket_ptrs, int32_t num_buckets, F f) {
     }
 #pragma omp barrier
     free(local_buf);
+}
+
+template<typename OFF, typename F>
+void HistogramAtomic(size_t size, OFF *&bucket_ptrs, int32_t num_buckets, F f) {
+    // Histogram.
+#pragma omp for
+    for (size_t i = 0u; i < size; i++) {
+        auto src = f(i);
+        __sync_fetch_and_add(&bucket_ptrs[src], 1);
+    }
 }
 
 /*
@@ -147,8 +159,10 @@ void BucketSort(vector<uint32_t> &histogram, T *&input, T *&output,
         cur_write_off[0] = 0;
     }
     MemSetOMP(bucket_ptrs, 0, num_buckets + 1, tid, max_omp_threads);
-    Histogram(size, bucket_ptrs, num_buckets, f);
-
+    Histogram(size, bucket_ptrs, num_buckets, f, timer);
+//    HistogramAtomic(size, bucket_ptrs, num_buckets, f);
+#pragma omp single
+    if (timer != nullptr)log_info("[%s]: Histogram, Time: %.9lfs", __FUNCTION__, timer->elapsed());
     InclusivePrefixSumOMP(histogram, cur_write_off + 1, num_buckets, [&bucket_ptrs](uint32_t it) {
         return bucket_ptrs[it];
     }, max_omp_threads);

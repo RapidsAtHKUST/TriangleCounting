@@ -34,7 +34,7 @@ T RemoveDuplicates(pair<T, T> *&edge_lst, I &num_edges, pair<T, T> *&edge_lst_bu
                    }, max_omp_threads, &timer);
 
         // Sort.
-#pragma omp for schedule(dynamic)
+#pragma omp for schedule(dynamic, 600)
         for (auto i = 0; i < num_buckets; i++) {
             sort(edge_lst_buffer + bucket_ptrs[i], edge_lst_buffer + bucket_ptrs[i + 1],
                  [](const Edge &left, const Edge &right) {
