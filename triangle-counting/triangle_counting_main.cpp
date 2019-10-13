@@ -39,7 +39,25 @@ int main(int argc, char *argv[]) {
         auto file_fd = open(file_name.c_str(), O_RDONLY, S_IRUSR | S_IWUSR);
         Edge *edge_lst = (Edge *) malloc(size);
         Edge *edge_lst_buffer = (Edge *) malloc(size);
-        pread(file_fd, edge_lst, size, 0);
+
+#pragma omp parallel
+        {
+            auto tid = omp_get_thread_num();
+            auto max_omp_threads = omp_get_max_threads();
+
+            MemSetOMP(edge_lst, 0, size / sizeof(Edge), tid, max_omp_threads);
+            MemSetOMP(edge_lst_buffer, 0, size / sizeof(Edge), tid, max_omp_threads);
+#pragma omp single
+            log_info("Populate Mem Time: %.9lfs", global_timer.elapsed());
+
+            size_t task_num = size;
+            size_t avg = (task_num + max_omp_threads - 1) / max_omp_threads;
+            auto it_beg = avg * tid;
+            auto it_end = min(avg * (tid + 1), task_num);
+            uint8_t *chars = reinterpret_cast<uint8_t *>(edge_lst);
+            pread(file_fd, chars + it_beg, it_end - it_beg, it_beg);
+        }
+
         log_info("Load File Time: %.9lfs", global_timer.elapsed());
 
         // Remove Multi-Edges and Self-Loops.
