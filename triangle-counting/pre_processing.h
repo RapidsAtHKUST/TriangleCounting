@@ -9,14 +9,13 @@ T RemoveDuplicates(pair<T, T> *&edge_lst, I &num_edges, pair<T, T> *&edge_lst_bu
     T max_node_id = 0;
     T num_buckets;
     auto max_omp_threads = omp_get_max_threads();
-    // Partition.
+
     uint32_t *bucket_ptrs;
     uint32_t *cur_write_off;
-    auto histogram = vector<uint32_t>((max_omp_threads + 1) * CACHE_LINE_ENTRY, 0);
+    vector<uint32_t> histogram;
 
 #pragma omp parallel num_threads(max_omp_threads)
     {
-        // Compute Max V-ID. (Bucket Sorting: Bucket-Num, Histogram and Scatter)
 #pragma omp for reduction(max: max_node_id)
         for (I i = 0u; i < num_edges; i++) {
             if (edge_lst[i].first > edge_lst[i].second) {
@@ -28,7 +27,7 @@ T RemoveDuplicates(pair<T, T> *&edge_lst, I &num_edges, pair<T, T> *&edge_lst_bu
         {
             num_buckets = max_node_id;
         }
-
+        // Partition.
         BucketSort(histogram, edge_lst, edge_lst_buffer, cur_write_off, bucket_ptrs, num_edges, num_buckets,
                    [&edge_lst](int i) {
                        return edge_lst[i].first;
@@ -39,7 +38,6 @@ T RemoveDuplicates(pair<T, T> *&edge_lst, I &num_edges, pair<T, T> *&edge_lst_bu
         for (auto i = 0; i < num_buckets; i++) {
             sort(edge_lst_buffer + bucket_ptrs[i], edge_lst_buffer + bucket_ptrs[i + 1],
                  [](const Edge &left, const Edge &right) {
-                     assert(left.first == right.first);
                      return left.second < right.second;
                  });
         }
@@ -51,23 +49,15 @@ T RemoveDuplicates(pair<T, T> *&edge_lst, I &num_edges, pair<T, T> *&edge_lst_bu
 
     // Selection.
     auto *relative_off = (uint32_t *) malloc(sizeof(uint32_t) * num_edges);
-    Edge *edge_lst2 = (Edge *) malloc(sizeof(Edge) * num_edges);
-#pragma omp parallel
+#pragma omp parallel num_threads(max_omp_threads)
     {
-        FlagPrefixSumOMP(histogram, relative_off, num_edges, [edge_lst](uint32_t it) {
+        SelectNotFOMP(histogram, edge_lst_buffer, edge_lst, relative_off, num_edges, [edge_lst](uint32_t it) {
             return edge_lst[it].first == edge_lst[it].second || (it > 0 && edge_lst[it - 1] == edge_lst[it]);
         }, max_omp_threads);
-#pragma omp for
-        for (I i = 0u; i < num_edges; i++) {
-            if (!(edge_lst[i].first == edge_lst[i].second || (i > 0 && edge_lst[i - 1] == edge_lst[i]))) {
-                auto off = i - relative_off[i];
-                edge_lst2[off] = edge_lst[i];
-            }
-        }
     }
-    edge_lst = edge_lst2;
+    swap(edge_lst, edge_lst_buffer);
     num_edges = num_edges - relative_off[num_edges - 1];
-
+    free(relative_off);
     log_info("New # of edges: %zu, Elapsed: %.9lfs", num_edges, timer.elapsed());
     return max_node_id;
 }
@@ -80,20 +70,14 @@ void ConvertEdgeListToCSR(uint32_t num_edges, pair<T, T> *edge_lst,
     deg_lst = (uint32_t *) (uint32_t *) malloc(sizeof(uint32_t) * (num_vertices + 1));
     off = (uint32_t *) (uint32_t *) malloc(sizeof(uint32_t) * (num_vertices + 1));
     auto cur_write_off = (uint32_t *) malloc(sizeof(uint32_t) * (num_vertices + 1));
-    auto histogram = vector<uint32_t>((max_omp_threads + 1) * CACHE_LINE_ENTRY, 0);
+    vector<uint32_t> histogram;
 
 #pragma omp parallel num_threads(max_omp_threads)
     {
         auto tid = omp_get_thread_num();
-        {
-            size_t task_num = num_vertices + 1;
-            size_t avg = (task_num + max_omp_threads - 1) / max_omp_threads;
-            auto it_beg = avg * tid;
-            auto it_end = min(avg * (tid + 1), task_num);
-            memset(deg_lst + it_beg, 0, sizeof(uint32_t) * (it_end - it_beg));
-            memset(off + it_beg, 0, sizeof(uint32_t) * (it_end - it_beg));
-#pragma omp barrier
-        }
+        MemSetOMP(deg_lst, 0, num_vertices + 1, tid, max_omp_threads);
+        MemSetOMP(off, 0, num_vertices + 1, tid, max_omp_threads);
+
         // Histogram.
 #pragma omp for
         for (uint32_t i = 0u; i < num_edges; i++) {
@@ -104,23 +88,17 @@ void ConvertEdgeListToCSR(uint32_t num_edges, pair<T, T> *edge_lst,
             __sync_fetch_and_add(&(deg_lst[dst]), 1);
         }
         // PrefixSum.
-        {
-            InclusivePrefixSumOMP(histogram, off + 1, num_vertices, [&deg_lst](uint32_t it) {
-                return deg_lst[it];
-            }, max_omp_threads);
-            size_t task_num = num_vertices + 1;
-            size_t avg = (task_num + max_omp_threads - 1) / max_omp_threads;
-            auto it_beg = avg * tid;
-            auto it_end = min(avg * (tid + 1), task_num);
-            memcpy(cur_write_off + it_beg, off + it_beg, sizeof(uint32_t) * (it_end - it_beg));
-#pragma omp barrier
-        }
+        InclusivePrefixSumOMP(histogram, off + 1, num_vertices, [&deg_lst](uint32_t it) {
+            return deg_lst[it];
+        }, max_omp_threads);
+        MemCpyOMP(cur_write_off, off, num_vertices + 1, tid, max_omp_threads);
+
+        // Scatter.
 #pragma omp single
         {
             adj_lst = (int32_t *) malloc(sizeof(int32_t) * off[num_vertices]);
             log_info("before csr transform time: %.9lf s", convert_timer.elapsed());
         }
-        // Scatter.
 #pragma omp for
         for (uint32_t i = 0; i < num_edges; i++) {
             auto src = edge_lst[i].first;
@@ -130,18 +108,6 @@ void ConvertEdgeListToCSR(uint32_t num_edges, pair<T, T> *edge_lst,
             old_offset = __sync_fetch_and_add(&(cur_write_off[dst]), 1);
             adj_lst[old_offset] = src;
         }
-#ifdef NO_REORDERING
-#pragma omp single
-        {
-            log_info("before sort time: %.9lf s", convert_timer.elapsed());
-        }
-        // 5th: sort each local ranges
-#pragma omp for schedule(dynamic)
-        for (auto u = 0u; u < num_vertices; u++) {
-            assert(cur_write_off[u] == off[u + 1]);
-            sort(adj_lst + off[u], adj_lst + off[u + 1]);
-        }
-#endif
     }
     free(cur_write_off);
     log_info("edge list to csr time: %.9lf s", convert_timer.elapsed());

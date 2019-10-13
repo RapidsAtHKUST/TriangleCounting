@@ -23,9 +23,6 @@ using namespace std::chrono;
 
 
 int main(int argc, char *argv[]) {
-//#ifdef USE_LOG
-//    setlocale(LC_NUMERIC, "");
-//#endif
     OptionParser op("Allowed options");
     auto string_option = op.add<Value<std::string>>("f", "file-path", "the graph bin file path");
     op.parse(argc, argv);
@@ -40,14 +37,16 @@ int main(int argc, char *argv[]) {
 
         auto file_name = string_option->value(0);
         auto file_fd = open(file_name.c_str(), O_RDONLY, S_IRUSR | S_IWUSR);
-        Edge *edge_lst = (Edge *) mmap(nullptr, size, PROT_READ | PROT_WRITE,
-                                       MAP_PRIVATE | MAP_POPULATE, file_fd, 0);
-        log_info("Load File Time: %.9lfs", global_timer.elapsed());
+        Edge *edge_lst = (Edge *) malloc(size);
         Edge *edge_lst_buffer = (Edge *) malloc(size);
+        pread(file_fd, edge_lst, size, 0);
+        log_info("Load File Time: %.9lfs", global_timer.elapsed());
+
         // Remove Multi-Edges and Self-Loops.
+        log_info("Mem: %d KB", getValue());
         auto max_node_id = RemoveDuplicates(edge_lst, num_edges, edge_lst_buffer);
         log_info("Mem: %d KB", getValue());
-        munmap(edge_lst_buffer, size);
+        free(edge_lst_buffer);
         log_info("Mem: %d KB", getValue());
 
         auto num_vertices = static_cast<uint32_t >(max_node_id) + 1;

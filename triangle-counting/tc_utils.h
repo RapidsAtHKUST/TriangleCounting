@@ -188,13 +188,13 @@ inline void ReorderDegDescending(graph_t &g, vector<int32_t> &new_vid_dict, vect
         BucketSortSmallBuckets(histogram, old_vid_dict_buffer, ptr, write_off, bucket_ptrs,
                                g.n, max_deg + 1, [&g, old_vid_dict_buffer, max_deg](int i) {
                     auto u = old_vid_dict_buffer[i];
-                    assert(u < g.n);
+//                    assert(u < g.n);
                     return max_deg - (g.row_ptrs[u + 1] - g.row_ptrs[u]);
                 }, max_omp_threads);
     }
-    free(old_vid_dict_buffer);
     free(write_off);
     free(bucket_ptrs);
+    free(old_vid_dict_buffer);
 #else
     log_info("Use parallel sort (parasort)");
     old_vid_dict = vector<int32_t>(g.n);
