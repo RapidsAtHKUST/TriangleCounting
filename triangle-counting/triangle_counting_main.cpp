@@ -40,10 +40,10 @@ int main(int argc, char *argv[]) {
         Edge *edge_lst = (Edge *) malloc(size);
         Edge *edge_lst_buffer = (Edge *) malloc(size);
 
-#pragma omp parallel
+        auto max_omp_threads = omp_get_max_threads();
+#pragma omp parallel num_threads(max_omp_threads)
         {
             auto tid = omp_get_thread_num();
-            auto max_omp_threads = omp_get_max_threads();
 //            MemSetOMP(edge_lst, 0, size / sizeof(Edge), tid, max_omp_threads);
 //            MemSetOMP(edge_lst_buffer, 0, size / sizeof(Edge), tid, max_omp_threads);
 #pragma omp single
@@ -59,13 +59,12 @@ int main(int argc, char *argv[]) {
         log_info("Load File Time: %.9lfs", global_timer.elapsed());
 
         // Remove Multi-Edges and Self-Loops.
-        log_info("Mem: %d KB", getValue());
+        log_info("[%s] Mem: %d KB", __FUNCTION__, getValue());
         auto max_node_id = RemoveDuplicates(edge_lst, num_edges, edge_lst_buffer);
-        log_info("Mem: %d KB", getValue());
-        log_info("Mem: %d KB", getValue());
+        log_info("[%s] Mem: %d KB", __FUNCTION__, getValue());
 
         auto num_vertices = static_cast<uint32_t >(max_node_id) + 1;
-        log_info("load edge list bin time: %.9lf s", global_timer.elapsed());
+        log_info("Load Edge List Time: %.9lf s", global_timer.elapsed());
 
         // Convert Edge List to CSR.
         graph_t g;
@@ -74,7 +73,6 @@ int main(int argc, char *argv[]) {
         uint32_t *deg_lst;
         log_info("Undirected Graph G = (|V|, |E|): %lld, %lld", g.n, g.m / 2);
 
-        auto max_omp_threads = omp_get_max_threads();
         g.adj = reinterpret_cast<int32_t *>(edge_lst_buffer);
         ConvertEdgeListToCSR(num_edges, edge_lst, num_vertices, deg_lst, g.row_ptrs, g.adj, max_omp_threads);
         assert(g.row_ptrs[num_vertices] == 2 * num_edges);
@@ -84,9 +82,9 @@ int main(int argc, char *argv[]) {
         auto *tmp_mem_blocks = reinterpret_cast<int32_t *>(edge_lst);
         ReorderDegDescending(g, new_dict, old_dict, tmp_mem_blocks);
 
-        log_info("Mem: %d KB", getValue());
+        log_info("[%s] Mem: %d KB", __FUNCTION__, getValue());
         free(tmp_mem_blocks);
-        log_info("Mem: %d KB", getValue());
+        log_info("[%s] Mem: %d KB", __FUNCTION__, getValue());
 
         // All-Edge Triangle Counting.
         size_t tc_cnt = 0;
