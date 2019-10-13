@@ -46,7 +46,6 @@ int main(int argc, char *argv[]) {
         log_info("Mem: %d KB", getValue());
         auto max_node_id = RemoveDuplicates(edge_lst, num_edges, edge_lst_buffer);
         log_info("Mem: %d KB", getValue());
-        free(edge_lst_buffer);
         log_info("Mem: %d KB", getValue());
 
         auto num_vertices = static_cast<uint32_t >(max_node_id) + 1;
@@ -60,6 +59,7 @@ int main(int argc, char *argv[]) {
         log_info("Undirected Graph G = (|V|, |E|): %lld, %lld", g.n, g.m / 2);
 
         auto max_omp_threads = omp_get_max_threads();
+        g.adj = reinterpret_cast<int32_t *>(edge_lst_buffer);
         ConvertEdgeListToCSR(num_edges, edge_lst, num_vertices, deg_lst, g.row_ptrs, g.adj, max_omp_threads);
         assert(g.row_ptrs[num_vertices] == 2 * num_edges);
 

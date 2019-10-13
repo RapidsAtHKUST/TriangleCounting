@@ -124,31 +124,32 @@ void BucketSort(vector<uint32_t> &histogram, T *&input, T *&output,
         cur_write_off = (OFF *) malloc(sizeof(OFF) * (num_buckets + 1));
         cur_write_off[0] = 0;
     }
-    {
-        size_t task_num = num_buckets + 1;
-        size_t avg = (task_num + max_omp_threads - 1) / max_omp_threads;
-        auto it_beg = avg * tid;
-        auto it_end = min(avg * (tid + 1), task_num);
-        memset(bucket_ptrs + it_beg, 0, sizeof(OFF) * (it_end - it_beg));
-#pragma omp barrier
-    }
+    MemSetOMP(bucket_ptrs, 0, num_buckets + 1, tid, max_omp_threads);
+
     // Histogram.
+    auto local_buf = (uint8_t *) calloc(num_buckets, sizeof(uint8_t));
 #pragma omp for
     for (size_t i = 0u; i < size; i++) {
-        __sync_fetch_and_add(&(bucket_ptrs[f(i)]), 1);
+        auto src = f(i);
+        local_buf[src]++;
+        if (local_buf[src] == 0xff) {
+            __sync_fetch_and_add(&bucket_ptrs[src], 0xff);
+            local_buf[src] = 0;
+        }
     }
+    for (size_t i = 0; i < num_buckets; i++) {
+        if (local_buf[i] != 0) {
+            __sync_fetch_and_add(&bucket_ptrs[i], local_buf[i]);
+        }
+    }
+#pragma omp barrier
+    free(local_buf);
+
     InclusivePrefixSumOMP(histogram, cur_write_off + 1, num_buckets, [&bucket_ptrs](uint32_t it) {
         return bucket_ptrs[it];
     }, max_omp_threads);
+    MemCpyOMP(bucket_ptrs, cur_write_off, num_buckets + 1, tid, max_omp_threads);
 
-    {
-        size_t task_num = num_buckets + 1;
-        size_t avg = (task_num + max_omp_threads - 1) / max_omp_threads;
-        auto it_beg = avg * tid;
-        auto it_end = min(avg * (tid + 1), task_num);
-        memcpy(bucket_ptrs + it_beg, cur_write_off + it_beg, sizeof(OFF) * (it_end - it_beg));
-#pragma omp barrier
-    }
 #pragma omp single
     {
         if (timer != nullptr)log_info("Before Scatter, Time: %.9lfs", timer->elapsed());
