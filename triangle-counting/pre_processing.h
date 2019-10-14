@@ -1,6 +1,7 @@
 #pragma once
 
 #include "primitives.h"
+#include "tc_utils.h"
 
 template<typename T, typename I>
 T RemoveDuplicates(pair<T, T> *&edge_lst, I &num_edges, pair<T, T> *&edge_lst_buffer) {
@@ -138,4 +139,107 @@ void ConvertEdgeListToCSR(uint32_t num_edges, pair<T, T> *edge_lst,
     }
     free(cur_write_off);
     log_info("[%s]: Total Conversion Time: %.9lf s", __FUNCTION__, convert_timer.elapsed());
+}
+
+
+inline void Reorder(graph_t &g, vector<int32_t> &new_vid_dict, vector<int32_t> &old_vid_dict, int32_t *&new_adj) {
+    Timer timer;
+
+    new_vid_dict = vector<int32_t>(g.n);
+    vector<uint32_t> new_off(g.n + 1);
+    new_off[0] = 0;
+
+    auto max_omp_threads = omp_get_max_threads();
+    auto histogram = vector<uint32_t>((max_omp_threads + 1) * CACHE_LINE_ENTRY, 0);
+
+#pragma omp parallel num_threads(max_omp_threads)
+    {
+        auto tid = omp_get_thread_num();
+        // 1st CSR: new_off, new_adj
+#pragma omp for
+        for (auto i = 0; i < g.n; i++) {
+            new_vid_dict[old_vid_dict[i]] = i;
+        }
+        InclusivePrefixSumOMP(histogram, &new_off.front() + 1, g.n, [&g, &old_vid_dict](uint32_t new_id) {
+            auto vertex = old_vid_dict[new_id];
+            return g.row_ptrs[vertex + 1] - g.row_ptrs[vertex];
+        }, max_omp_threads);
+#pragma omp single
+        log_info("[%s]: Finish PrefixSum Time: %.9lf s", __FUNCTION__, timer.elapsed_and_reset());
+
+        // 2nd Parallel Transform
+#pragma omp for schedule(dynamic, 100)
+        for (auto i = 0; i < g.n; i++) {
+            auto origin_i = old_vid_dict[i];
+            // transform
+            auto cur_idx = new_off[i];
+            for (auto my_old_off = g.row_ptrs[origin_i]; my_old_off < g.row_ptrs[origin_i + 1]; my_old_off++) {
+                new_adj[cur_idx] = new_vid_dict[g.adj[my_old_off]];
+                cur_idx++;
+            }
+            // sort the local ranges
+            sort(new_adj + new_off[i], new_adj + new_off[i + 1]);
+        }
+
+        MemCpyOMP(g.row_ptrs, &new_off.front(), (g.n + 1), tid, max_omp_threads);
+    }
+    swap(g.adj, new_adj);
+    log_info("[%s]: Finish Reorder Time: %.3lf s", __FUNCTION__, timer.elapsed());
+}
+
+inline void ReorderDegDescending(graph_t &g, vector<int32_t> &new_vid_dict, vector<int32_t> &old_vid_dict,
+                                 int32_t *&new_adj) {
+    Timer timer;
+
+#define USE_BUCKET_SORT
+#ifdef USE_BUCKET_SORT
+    auto max_omp_threads = omp_get_max_threads();
+    auto max_deg = 0;
+    auto *old_vid_dict_buffer = (int32_t *) malloc(sizeof(int32_t) * g.n);
+    uint32_t *write_off = nullptr;
+    uint32_t *bucket_ptrs = nullptr;
+    auto histogram = vector<uint32_t>((max_omp_threads + 1) * CACHE_LINE_ENTRY, 0);
+
+#pragma omp parallel num_threads(max_omp_threads)
+    {
+#pragma omp for reduction(max: max_deg)
+        for (auto i = 0; i < g.n; i++) {
+            max_deg = max<int>(max_deg, g.row_ptrs[i + 1] - g.row_ptrs[i]);
+        }
+#pragma omp single nowait
+        {
+            old_vid_dict = vector<int32_t>(g.n);
+        }
+#pragma omp for
+        for (auto i = 0u; i < g.n; i++) {
+            old_vid_dict_buffer[i] = i;
+        }
+        auto ptr = &old_vid_dict[0];
+        BucketSortSmallBuckets(histogram, old_vid_dict_buffer, ptr, write_off, bucket_ptrs,
+                               g.n, max_deg + 1, [&g, old_vid_dict_buffer, max_deg](int i) {
+                    auto u = old_vid_dict_buffer[i];
+//                    assert(u < g.n);
+                    return max_deg - (g.row_ptrs[u + 1] - g.row_ptrs[u]);
+                }, max_omp_threads);
+    }
+    free(write_off);
+    free(bucket_ptrs);
+    free(old_vid_dict_buffer);
+#else
+    log_info("Use parallel sort (parasort)");
+    old_vid_dict = vector<int32_t>(g.n);
+#pragma omp parallel for
+    for (auto i = 0; i < g.n; i++) {
+        old_vid_dict[i] = i;
+    }
+    log_info("Allocation time:  %.9lf s", timer.elapsed());
+    parasort(old_vid_dict.size(), &old_vid_dict.front(),
+             [&g](int l, int r) -> bool {
+                 return g.row_ptrs[l + 1] - g.row_ptrs[l] > g.row_ptrs[r + 1] - g.row_ptrs[r];
+             },
+             omp_get_max_threads());
+#endif
+    log_info("Deg-descending time:  %.9lf s", timer.elapsed());
+
+    Reorder(g, new_vid_dict, old_vid_dict, new_adj);
 }

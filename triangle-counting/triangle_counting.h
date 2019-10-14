@@ -5,7 +5,8 @@
 #include "util/libpopcnt.h"
 #include "util/set_inter_cnt_utils.h"
 
-#define MAX_PACK_NUM (65536)
+#define MAX_PACK_NUM (32768)
+#define WORKLOAD_STAT
 
 inline size_t CountTriBMPAndMergeWithPack(graph_t &g, int max_omp_threads) {
     Timer tc_timer;
@@ -21,7 +22,7 @@ inline size_t CountTriBMPAndMergeWithPack(graph_t &g, int max_omp_threads) {
     constexpr int word_in_bits = sizeof(word_t) * 8;
 
     int to_pack_num = min<int>(g.n, MAX_PACK_NUM);
-    vector<vector<uint16_t>> word_indexes(to_pack_num);   // 65536 * bits-sizeof(word)
+    vector<vector<uint16_t>> word_indexes(to_pack_num);   // MAX_PACK_NUM * bits-sizeof(word)
     vector<vector<word_t>> words(to_pack_num);
 
 #pragma omp parallel num_threads(max_omp_threads)
@@ -84,6 +85,7 @@ inline size_t CountTriBMPAndMergeWithPack(graph_t &g, int max_omp_threads) {
                     auto num_words_v = word_indexes[v].size();
                     for (size_t i = 0; i < num_words_v; i++) {
 #ifdef WORKLOAD_STAT
+                        workload++;
                         workload_large_deg++;
 #endif
                         buffer[i] = bitmap.getWord(word_indexes[v][i]);
@@ -94,6 +96,7 @@ inline size_t CountTriBMPAndMergeWithPack(graph_t &g, int max_omp_threads) {
                     cn_count += popcnt(&buffer.front(), sizeof(word_t) * num_words_v);
                 } else {
                     for (auto off = g.row_ptrs[v]; off < row_ptrs_beg[v]; off++) {
+                        workload++;
                         auto w = g.adj[off];
                         if (bitmap[w])cn_count++;
                     }
@@ -102,15 +105,19 @@ inline size_t CountTriBMPAndMergeWithPack(graph_t &g, int max_omp_threads) {
                 // Second Range.
                 auto dv = row_ptrs_end[v + 1] - row_ptrs_beg[v];
                 if (du > 0 && dv > 0) {
+#ifdef WORKLOAD_STAT
+                    workload += du + dv;
+#endif
+
 #ifdef __AVX2__
                     cn_count += SetInterCntAVX2Detail(&g, row_ptrs_beg[u], row_ptrs_end[u + 1], row_ptrs_beg[v],
-                                                           row_ptrs_end[v + 1]);
+                                                       row_ptrs_end[v + 1]);
 #elif defined(__SSE4_1__)
                     cn_count += SetInterCntSSE4Detail(&g, row_ptrs_beg[u], row_ptrs_end[u + 1], row_ptrs_beg[v],
                                                       row_ptrs_end[v + 1]);
 #else
                     cn_count += SetIntersectionScalarCntDetail(&g, row_ptrs_beg[u], row_ptrs_end[u + 1],
-                                                               row_ptrs_beg[v], row_ptrs_end[v + 1]);
+                                                           row_ptrs_beg[v], row_ptrs_end[v + 1]);
 #endif
                 }
                 tc_cnt += cn_count;

@@ -1,11 +1,50 @@
 #pragma once
 
-#include "search_util.h"
-#include "../tc_utils.h"
-
 #include <x86intrin.h>
 
+#include "../tc_utils.h"
+#include "search_util.h"
+
 using eid_t = uint32_t;
+
+#define ENABLE_AVX2
+
+inline int SetInterLookup(graph_t *g, eid_t off_nei_u, eid_t uEnd, eid_t off_nei_v, eid_t vEnd) {
+    if (uEnd - off_nei_u > vEnd - off_nei_v) {
+        swap(uEnd, vEnd);
+        swap(off_nei_u, off_nei_v);
+    }
+    int cnt = 0;
+    while (true) {
+#ifdef __AVX512F__
+        off_nei_u = LinearSearchAVX512(g->adj, off_nei_u, uEnd, g->adj[off_nei_v]);
+#else
+        off_nei_u = LinearSearch(g->adj, off_nei_u, uEnd, g->adj[off_nei_v]);
+#endif
+        if (off_nei_u >= uEnd) {
+            break;
+        }
+#ifdef __AVX512F__
+        off_nei_v = GallopingSearchAVX512(g->adj, off_nei_v, vEnd, g->adj[off_nei_u]);
+#elif defined(__AVX2__) && defined(ENABLE_AVX2)
+        off_nei_v = GallopingSearchAVX2(g->adj, off_nei_v, vEnd, g->adj[off_nei_u]);
+#else
+        off_nei_v = GallopingSearch(g->adj, off_nei_v, vEnd, g->adj[off_nei_u]);
+#endif
+        if (off_nei_v >= vEnd) {
+            break;
+        }
+        if (g->adj[off_nei_u] == g->adj[off_nei_v]) {
+            cnt++;
+            ++off_nei_u;
+            ++off_nei_v;
+            if (off_nei_u >= uEnd || off_nei_v >= vEnd) {
+                break;
+            }
+        }
+    }
+    return cnt;
+}
 
 inline int SetIntersectionScalarCntDetail(graph_t *g, eid_t off_nei_u, eid_t uEnd, eid_t off_nei_v, eid_t vEnd) {
     int cnt = 0;
