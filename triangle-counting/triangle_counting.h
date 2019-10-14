@@ -7,7 +7,7 @@
 
 #define MAX_PACK_NUM (32768)
 #define FIRST_RANGE_SIZE (32768)
-#define WORKLOAD_STAT
+//#define WORKLOAD_STAT
 
 template<typename WI, typename WC>
 void PackWords(graph_t &g, uint32_t *row_ptrs_beg, int to_pack_num, vector<vector<WI>> &word_indexes,
@@ -71,17 +71,19 @@ inline size_t CountTriBMPAndMergeWithPack(graph_t &g, int max_omp_threads) {
 
 #pragma omp for schedule(dynamic, 100) reduction(+:tc_cnt) reduction(+:workload)  reduction(+:workload_large_deg)
         for (auto u = 0u; u < g.n; u++) {
-            // Set.
             static thread_local BoolArray<word_t> bitmap(FIRST_RANGE_SIZE);
             static thread_local vector<word_t> buffer(FIRST_RANGE_SIZE / word_in_bits);
-            if (u < to_pack_num) {
-                for (size_t i = 0; i < word_indexes[u].size(); i++) {
-                    bitmap.setWord(word_indexes[u][i], words[u][i]);
-                }
-            } else {
-                for (auto off = g.row_ptrs[u]; off < row_ptrs_beg[u]; off++) {
-                    auto w = g.adj[off];
-                    bitmap.set(w);
+            //  Index for First Range.
+            if (g.row_ptrs[u] < row_ptrs_beg[u]) {
+                if (u < to_pack_num) {
+                    for (size_t i = 0; i < word_indexes[u].size(); i++) {
+                        bitmap.setWord(word_indexes[u][i], words[u][i]);
+                    }
+                } else {
+                    for (auto off = g.row_ptrs[u]; off < row_ptrs_beg[u]; off++) {
+                        auto w = g.adj[off];
+                        bitmap.set(w);
+                    }
                 }
             }
             auto du = row_ptrs_end[u + 1] - row_ptrs_beg[u];
@@ -105,18 +107,10 @@ inline size_t CountTriBMPAndMergeWithPack(graph_t &g, int max_omp_threads) {
                         }
                         cn_count += popcnt(&buffer.front(), sizeof(word_t) * num_words_v);
                     } else {
-#ifdef BMP
-                        for (auto off = g.row_ptrs[v]; off < row_ptrs_beg[v]; off++) {
-                            workload++;
-                            auto w = g.adj[off];
-                            if (bitmap[w])cn_count++;
-                        }
-#else
                         if (g.row_ptrs[v] < row_ptrs_beg[v]) {
                             cn_count += SetInterCntVecMerge(&g, g.row_ptrs[u], row_ptrs_beg[u], g.row_ptrs[v],
                                                             row_ptrs_beg[v]);
                         }
-#endif
                     }
                 }
 
@@ -131,7 +125,9 @@ inline size_t CountTriBMPAndMergeWithPack(graph_t &g, int max_omp_threads) {
                 }
                 tc_cnt += cn_count;
             }
-            bitmap.reset();
+            if (g.row_ptrs[u] < row_ptrs_beg[u]) {
+                bitmap.reset();
+            }
         }
     }
     free(row_ptrs_beg);
