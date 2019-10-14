@@ -40,7 +40,7 @@ inline size_t CountTriBMPAndMergeWithPack(graph_t &g, int max_omp_threads) {
         }
 
         // Construct Words for Range [0, 32768), at most 512 words (given each word 64 bits)
-#pragma omp for schedule(dynamic, 10)
+#pragma omp for schedule(dynamic, 100)
         for (auto u = 0u; u < to_pack_num; u++) {
             auto prev_blk_id = -1;
             for (auto off = g.row_ptrs[u]; off < row_ptrs_beg[u]; off++) {
@@ -166,7 +166,7 @@ inline size_t CountTriBMPWithPack(graph_t &g, int max_omp_threads) {
         }
 
         // Construct Words for Range [0, 32768), at most 512 words (given each word 64 bits)
-#pragma omp for schedule(dynamic, 10)
+#pragma omp for schedule(dynamic, 100)
         for (auto u = 0u; u < to_pack_num; u++) {
             auto prev_blk_id = -1;
             for (auto off = g.row_ptrs[u]; off < row_ptrs_beg[u]; off++) {

@@ -7,61 +7,71 @@ Triangle Counting
 * LJ
 
 ```
-2019-10-12 19:45:04 INFO  (ts: 1570880704.109176 s, et: 0.000479 s)  triangle_counting_main.cpp:38: File size: 551950184
-2019-10-12 19:45:04 INFO  (ts: 1570880704.109349 s, et: 0.000652 s)  triangle_counting_main.cpp:39: #of Edges: 68993773
-2019-10-12 19:45:04 INFO  (ts: 1570880704.397944 s, et: 0.289246 s)  triangle_counting_main.cpp:45: Load File Time: 0.289153531s
-2019-10-12 19:45:04 INFO  (ts: 1570880704.542928 s, et: 0.434231 s)  primitives.h:142: Before Scatter, Time: 0.144884439s
-2019-10-12 19:45:04 INFO  (ts: 1570880704.750749 s, et: 0.642052 s)  primitives.h:154: Before Sort, Time: 0.352706202s
-2019-10-12 19:45:05 INFO  (ts: 1570880705.077249 s, et: 0.968551 s)  pre_processing.h:50: Finish Sort, 0.679206171s
-2019-10-12 19:45:05 INFO  (ts: 1570880705.141157 s, et: 1.032459 s)  pre_processing.h:71: New # of edges: 42851237, Elapsed: 0.743113643s
-2019-10-12 19:45:05 INFO  (ts: 1570880705.141384 s, et: 1.032686 s)  triangle_counting_main.cpp:49: Mem: 1703264 KB
-2019-10-12 19:45:05 INFO  (ts: 1570880705.181305 s, et: 1.072608 s)  triangle_counting_main.cpp:51: Mem: 1164460 KB
-2019-10-12 19:45:05 INFO  (ts: 1570880705.181348 s, et: 1.072650 s)  triangle_counting_main.cpp:54: load edge list bin time: 1.072558114 s
-2019-10-12 19:45:05 INFO  (ts: 1570880705.181367 s, et: 1.072669 s)  triangle_counting_main.cpp:61: Undirected Graph G = (|V|, |E|): 4847571, 42851237
-2019-10-12 19:45:05 INFO  (ts: 1570880705.295944 s, et: 1.187247 s)  pre_processing.h:121: before csr transform time: 0.114558055 s
-2019-10-12 19:45:05 INFO  (ts: 1570880705.533120 s, et: 1.424423 s)  pre_processing.h:147: edge list to csr time: 0.351734480 s
-2019-10-12 19:45:05 INFO  (ts: 1570880705.542910 s, et: 1.434213 s)  primitives.h:172: Mem Size Buckets: 335104320, Bucket#: 20334
-2019-10-12 19:45:05 INFO  (ts: 1570880705.584995 s, et: 1.476297 s)  tc_utils.h:212: Deg-descending time:  0.051814155 s
-2019-10-12 19:45:05 INFO  (ts: 1570880705.612565 s, et: 1.503867 s)  tc_utils.h:137: init ordering structures time: 0.027498378 s
-2019-10-12 19:45:05 INFO  (ts: 1570880705.749218 s, et: 1.640521 s)  tc_utils.h:153: parallel transform and sort: 0.137 s
-2019-10-12 19:45:05 INFO  (ts: 1570880705.752506 s, et: 1.643809 s)  tc_utils.h:157: parallel transform after copying: 0.140 s
-2019-10-12 19:45:05 INFO  (ts: 1570880705.753348 s, et: 1.644650 s)  triangle_counting_main.cpp:72: Mem: 1620816 KB
-2019-10-12 19:45:05 INFO  (ts: 1570880705.754493 s, et: 1.645795 s)  triangle_counting_main.cpp:74: Mem: 1286040 KB
-2019-10-12 19:45:05 INFO  (ts: 1570880705.777662 s, et: 1.668965 s)  triangle_counting.h:39: finish init row_ptrs_end, max d: 685, time: 0.023147091s
-2019-10-12 19:45:05 INFO  (ts: 1570880705.787509 s, et: 1.678811 s)  triangle_counting.h:59: Finish Indexing: 0.032993409s
-2019-10-12 19:45:06 INFO  (ts: 1570880706.178646 s, et: 2.069949 s)  triangle_counting.h:123: Forward cost: 0.424 s, Mem Usage: 1346980 KB
-2019-10-12 19:45:06 INFO  (ts: 1570880706.178725 s, et: 2.070028 s)  triangle_counting.h:124: Triangle Cnt: 285730264
-2019-10-12 19:45:06 INFO  (ts: 1570880706.194810 s, et: 2.086112 s)  triangle_counting_main.cpp:89: There are 285730264 triangles in the input graph.
+2019-10-14 09:52:58 INFO  (ts: 1571017978.369168 s, et: 0.000458 s)  triangle_counting_main.cpp:35: File size: 551950184
+2019-10-14 09:52:58 INFO  (ts: 1571017978.369430 s, et: 0.000719 s)  triangle_counting_main.cpp:36: #of Edges: 68993773
+2019-10-14 09:52:58 INFO  (ts: 1571017978.374253 s, et: 0.005542 s)  triangle_counting_main.cpp:50: Populate Mem Time: 0.005448280s
+2019-10-14 09:52:58 INFO  (ts: 1571017978.410091 s, et: 0.041381 s)  triangle_counting_main.cpp:59: Load File Time: 0.041286879s
+2019-10-14 09:52:58 INFO  (ts: 1571017978.410395 s, et: 0.041685 s)  triangle_counting_main.cpp:62: [main] Mem: 540624 KB
+2019-10-14 09:52:58 INFO  (ts: 1571017978.461428 s, et: 0.092718 s)  primitives.h:123: [Histogram]: Local Comp Time: 0.050986211s
+2019-10-14 09:52:58 INFO  (ts: 1571017978.482728 s, et: 0.114018 s)  primitives.h:165: [BucketSort]: Histogram, Time: 0.072286072s
+2019-10-14 09:52:58 INFO  (ts: 1571017978.498967 s, et: 0.130257 s)  primitives.h:173: [BucketSort]: Before Scatter, Time: 0.088524448s
+2019-10-14 09:52:58 INFO  (ts: 1571017978.724555 s, et: 0.355845 s)  primitives.h:185: [BucketSort]: Before Sort, Time: 0.314113486s
+2019-10-14 09:52:58 INFO  (ts: 1571017978.821269 s, et: 0.452558 s)  pre_processing.h:48: Finish Sort, 0.410826820s
+2019-10-14 09:52:58 INFO  (ts: 1571017978.889418 s, et: 0.520708 s)  pre_processing.h:61: New # of edges: 42851237, Elapsed: 0.478976451s
+2019-10-14 09:52:58 INFO  (ts: 1571017978.889594 s, et: 0.520883 s)  triangle_counting_main.cpp:64: [main] Mem: 1174080 KB
+2019-10-14 09:52:58 INFO  (ts: 1571017978.889626 s, et: 0.520916 s)  triangle_counting_main.cpp:67: Load Edge List Time: 0.520823817 s
+2019-10-14 09:52:58 INFO  (ts: 1571017978.889652 s, et: 0.520942 s)  triangle_counting_main.cpp:74: Undirected Graph G = (|V|, |E|): 4847571, 42851237
+2019-10-14 09:52:58 INFO  (ts: 1571017978.898393 s, et: 0.529683 s)  pre_processing.h:82: [ConvertEdgeListToCSR]: InitTime: 0.008714014 s
+2019-10-14 09:52:58 INFO  (ts: 1571017978.927682 s, et: 0.558972 s)  pre_processing.h:101: [ConvertEdgeListToCSR]: Histogram Time: 0.038005929 s
+2019-10-14 09:52:58 INFO  (ts: 1571017978.956137 s, et: 0.587427 s)  pre_processing.h:110: [ConvertEdgeListToCSR]: Histogram Time: 0.066458966 s
+2019-10-14 09:52:58 INFO  (ts: 1571017978.972863 s, et: 0.604153 s)  pre_processing.h:125: [ConvertEdgeListToCSR]: PrefixSum Time: 0.083185233 s
+2019-10-14 09:52:59 INFO  (ts: 1571017979.212722 s, et: 0.844012 s)  pre_processing.h:140: [ConvertEdgeListToCSR]: Total Conversion Time: 0.323045887 s
+2019-10-14 09:52:59 INFO  (ts: 1571017979.222553 s, et: 0.853843 s)  primitives.h:204: [BucketSortSmallBuckets]: Mem Size Buckets: 335104320, Bucket#: 20334
+2019-10-14 09:52:59 INFO  (ts: 1571017979.266346 s, et: 0.897636 s)  tc_utils.h:212: Deg-descending time:  0.053531586 s
+2019-10-14 09:52:59 INFO  (ts: 1571017979.297355 s, et: 0.928645 s)  tc_utils.h:138: [Reorder]: Finish PrefixSum Time: 0.030907616 s
+2019-10-14 09:52:59 INFO  (ts: 1571017979.419592 s, et: 1.050882 s)  tc_utils.h:157: [Reorder]: Finish Reorder Time: 0.122 s
+2019-10-14 09:52:59 INFO  (ts: 1571017979.420641 s, et: 1.051931 s)  triangle_counting_main.cpp:85: [main] Mem: 1351636 KB
+2019-10-14 09:52:59 INFO  (ts: 1571017979.422455 s, et: 1.053745 s)  triangle_counting_main.cpp:87: [main] Mem: 812620 KB
+2019-10-14 09:52:59 INFO  (ts: 1571017979.445952 s, et: 1.077242 s)  triangle_counting.h:39: finish init row_ptrs_end, max d: 685, time: 0.023464221s
+2019-10-14 09:52:59 INFO  (ts: 1571017979.458670 s, et: 1.089960 s)  triangle_counting.h:59: Finish Indexing: 0.036187656s
+2019-10-14 09:52:59 INFO  (ts: 1571017979.877863 s, et: 1.509153 s)  triangle_counting.h:123: Forward cost: 0.455 s, Mem Usage: 859872 KB
+2019-10-14 09:52:59 INFO  (ts: 1571017979.877933 s, et: 1.509223 s)  triangle_counting.h:124: Triangle Cnt: 285730264
+2019-10-14 09:52:59 INFO  (ts: 1571017979.893038 s, et: 1.524327 s)  triangle_counting_main.cpp:102: There are 285730264 triangles in the input graph.
 There are 285730264 triangles in the input graph.
 ```
 
 * scale-free 24
 
 ```
-2019-10-12 19:45:17 INFO  (ts: 1570880717.297371 s, et: 0.000406 s)  triangle_counting_main.cpp:38: File size: 2147483648
-2019-10-12 19:45:17 INFO  (ts: 1570880717.297558 s, et: 0.000593 s)  triangle_counting_main.cpp:39: #of Edges: 268435456
-2019-10-12 19:45:18 INFO  (ts: 1570880718.338713 s, et: 1.041748 s)  triangle_counting_main.cpp:45: Load File Time: 1.041671807s
-2019-10-12 19:45:19 INFO  (ts: 1570880719.097543 s, et: 1.800578 s)  primitives.h:142: Before Scatter, Time: 0.758751896s
-2019-10-12 19:45:20 INFO  (ts: 1570880720.300542 s, et: 3.003578 s)  primitives.h:154: Before Sort, Time: 1.961752646s
-2019-10-12 19:45:21 INFO  (ts: 1570880721.359645 s, et: 4.062680 s)  pre_processing.h:50: Finish Sort, 3.020855848s
-2019-10-12 19:45:21 INFO  (ts: 1570880721.567403 s, et: 4.270438 s)  pre_processing.h:71: New # of edges: 260379850, Elapsed: 3.228613263s
-2019-10-12 19:45:21 INFO  (ts: 1570880721.567565 s, et: 4.270600 s)  triangle_counting_main.cpp:49: Mem: 7280608 KB
-2019-10-12 19:45:21 INFO  (ts: 1570880721.693603 s, et: 4.396638 s)  triangle_counting_main.cpp:51: Mem: 5183460 KB
-2019-10-12 19:45:21 INFO  (ts: 1570880721.693655 s, et: 4.396690 s)  triangle_counting_main.cpp:54: load edge list bin time: 4.396614722 s
-2019-10-12 19:45:21 INFO  (ts: 1570880721.693671 s, et: 4.396705 s)  triangle_counting_main.cpp:61: Undirected Graph G = (|V|, |E|): 16777216, 260379850
-2019-10-12 19:45:22 INFO  (ts: 1570880722.604084 s, et: 5.307119 s)  pre_processing.h:121: before csr transform time: 0.910398409 s
-2019-10-12 19:45:24 INFO  (ts: 1570880724.358538 s, et: 7.061573 s)  pre_processing.h:147: edge list to csr time: 2.664851507 s
-2019-10-12 19:45:24 INFO  (ts: 1570880724.393935 s, et: 7.096970 s)  primitives.h:172: Mem Size Buckets: 1039362560, Bucket#: 406001
-2019-10-12 19:45:24 INFO  (ts: 1570880724.528179 s, et: 7.231214 s)  tc_utils.h:212: Deg-descending time:  0.169494234 s
-2019-10-12 19:45:24 INFO  (ts: 1570880724.633725 s, et: 7.336760 s)  tc_utils.h:137: init ordering structures time: 0.105483913 s
-2019-10-12 19:45:25 INFO  (ts: 1570880725.699383 s, et: 8.402418 s)  tc_utils.h:153: parallel transform and sort: 1.066 s
-2019-10-12 19:45:25 INFO  (ts: 1570880725.708659 s, et: 8.411694 s)  tc_utils.h:157: parallel transform after copying: 1.075 s
-2019-10-12 19:45:25 INFO  (ts: 1570880725.709359 s, et: 8.412394 s)  triangle_counting_main.cpp:72: Mem: 7911668 KB
-2019-10-12 19:45:25 INFO  (ts: 1570880725.715637 s, et: 8.418672 s)  triangle_counting_main.cpp:74: Mem: 5877448 KB
-2019-10-12 19:45:25 INFO  (ts: 1570880725.816571 s, et: 8.519606 s)  triangle_counting.h:39: finish init row_ptrs_end, max d: 1773, time: 0.100895222s
-2019-10-12 19:45:25 INFO  (ts: 1570880725.853292 s, et: 8.556328 s)  triangle_counting.h:59: Finish Indexing: 0.137616642s
-2019-10-12 19:45:35 INFO  (ts: 1570880735.742032 s, et: 18.445067 s)  triangle_counting.h:123: Forward cost: 10.026 s, Mem Usage: 5883072 KB
-2019-10-12 19:45:35 INFO  (ts: 1570880735.742115 s, et: 18.445150 s)  triangle_counting.h:124: Triangle Cnt: 10286638314
-2019-10-12 19:45:35 INFO  (ts: 1570880735.758235 s, et: 18.461270 s)  triangle_counting_main.cpp:89: There are 10286638314 triangles in the input graph.
+2019-10-14 09:51:50 INFO  (ts: 1571017910.239402 s, et: 0.000466 s)  triangle_counting_main.cpp:35: File size: 2147483648
+2019-10-14 09:51:50 INFO  (ts: 1571017910.239644 s, et: 0.000708 s)  triangle_counting_main.cpp:36: #of Edges: 268435456
+2019-10-14 09:51:50 INFO  (ts: 1571017910.244978 s, et: 0.006042 s)  triangle_counting_main.cpp:50: Populate Mem Time: 0.005950599s
+2019-10-14 09:51:50 INFO  (ts: 1571017910.369982 s, et: 0.131045 s)  triangle_counting_main.cpp:59: Load File Time: 0.130953605s
+2019-10-14 09:51:50 INFO  (ts: 1571017910.370192 s, et: 0.131256 s)  triangle_counting_main.cpp:62: [main] Mem: 2099024 KB
+2019-10-14 09:51:50 INFO  (ts: 1571017910.800830 s, et: 0.561894 s)  primitives.h:123: [Histogram]: Local Comp Time: 0.430607920s
+2019-10-14 09:51:50 INFO  (ts: 1571017910.877869 s, et: 0.638933 s)  primitives.h:165: [BucketSort]: Histogram, Time: 0.507646563s
+2019-10-14 09:51:50 INFO  (ts: 1571017910.898543 s, et: 0.659608 s)  primitives.h:173: [BucketSort]: Before Scatter, Time: 0.528319571s
+2019-10-14 09:51:52 INFO  (ts: 1571017912.152406 s, et: 1.913470 s)  primitives.h:185: [BucketSort]: Before Sort, Time: 1.782184679s
+2019-10-14 09:51:52 INFO  (ts: 1571017912.658172 s, et: 2.419236 s)  pre_processing.h:48: Finish Sort, 2.287949928s
+2019-10-14 09:51:52 INFO  (ts: 1571017912.865714 s, et: 2.626778 s)  pre_processing.h:61: New # of edges: 260379850, Elapsed: 2.495492544s
+2019-10-14 09:51:52 INFO  (ts: 1571017912.865863 s, et: 2.626927 s)  triangle_counting_main.cpp:64: [main] Mem: 4770384 KB
+2019-10-14 09:51:52 INFO  (ts: 1571017912.865886 s, et: 2.626950 s)  triangle_counting_main.cpp:67: Load Edge List Time: 2.626859096 s
+2019-10-14 09:51:52 INFO  (ts: 1571017912.865900 s, et: 2.626964 s)  triangle_counting_main.cpp:74: Undirected Graph G = (|V|, |E|): 16777216, 260379850
+2019-10-14 09:51:52 INFO  (ts: 1571017912.878070 s, et: 2.639134 s)  pre_processing.h:82: [ConvertEdgeListToCSR]: InitTime: 0.012150170 s
+2019-10-14 09:51:53 INFO  (ts: 1571017913.235555 s, et: 2.996619 s)  pre_processing.h:101: [ConvertEdgeListToCSR]: Histogram Time: 0.369639190 s
+2019-10-14 09:51:53 INFO  (ts: 1571017913.316113 s, et: 3.077177 s)  pre_processing.h:110: [ConvertEdgeListToCSR]: Histogram Time: 0.450197406 s
+2019-10-14 09:51:53 INFO  (ts: 1571017913.336516 s, et: 3.097580 s)  pre_processing.h:125: [ConvertEdgeListToCSR]: PrefixSum Time: 0.470598717 s
+2019-10-14 09:51:54 INFO  (ts: 1571017914.867881 s, et: 4.628945 s)  pre_processing.h:140: [ConvertEdgeListToCSR]: Total Conversion Time: 2.001964456 s
+2019-10-14 09:51:54 INFO  (ts: 1571017914.891653 s, et: 4.652717 s)  primitives.h:204: [BucketSortSmallBuckets]: Mem Size Buckets: 1039362560, Bucket#: 406001
+2019-10-14 09:51:55 INFO  (ts: 1571017915.027087 s, et: 4.788151 s)  tc_utils.h:212: Deg-descending time:  0.159038445 s
+2019-10-14 09:51:55 INFO  (ts: 1571017915.132506 s, et: 4.893570 s)  tc_utils.h:138: [Reorder]: Finish PrefixSum Time: 0.105344981 s
+2019-10-14 09:51:56 INFO  (ts: 1571017916.139366 s, et: 5.900430 s)  tc_utils.h:157: [Reorder]: Finish Reorder Time: 1.007 s
+2019-10-14 09:51:56 INFO  (ts: 1571017916.140623 s, et: 5.901687 s)  triangle_counting_main.cpp:85: [main] Mem: 5114264 KB
+2019-10-14 09:51:56 INFO  (ts: 1571017916.147351 s, et: 5.908415 s)  triangle_counting_main.cpp:87: [main] Mem: 3017108 KB
+2019-10-14 09:51:56 INFO  (ts: 1571017916.246365 s, et: 6.007429 s)  triangle_counting.h:39: finish init row_ptrs_end, max d: 1773, time: 0.098964865s
+2019-10-14 09:51:56 INFO  (ts: 1571017916.287457 s, et: 6.048521 s)  triangle_counting.h:59: Finish Indexing: 0.140054370s
+2019-10-14 09:52:06 INFO  (ts: 1571017926.241663 s, et: 16.002727 s)  triangle_counting.h:123: Forward cost: 10.094 s, Mem Usage: 3017120 KB
+2019-10-14 09:52:06 INFO  (ts: 1571017926.241742 s, et: 16.002806 s)  triangle_counting.h:124: Triangle Cnt: 10286638314
+2019-10-14 09:52:06 INFO  (ts: 1571017926.264234 s, et: 16.025298 s)  triangle_counting_main.cpp:102: There are 10286638314 triangles in the input graph.
 There are 10286638314 triangles in the input graph.
 ```
