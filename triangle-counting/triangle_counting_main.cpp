@@ -94,8 +94,6 @@ int main(int argc, char *argv[]) {
             ComputeSupport(&g, tc_cnt, i);
         tc_cnt /= 3;
 #else
-        //        tc_cnt = CountTriBMP(g, max_omp_threads);
-//        tc_cnt = CountTriBMPWithPack(g, max_omp_threads);
         tc_cnt = CountTriBMPAndMergeWithPack(g, max_omp_threads);
 #endif
 
