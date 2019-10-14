@@ -6,7 +6,33 @@
 #include "util/set_inter_cnt_utils.h"
 
 #define MAX_PACK_NUM (32768)
+#define FIRST_RANGE_SIZE (32768)
 #define WORKLOAD_STAT
+
+template<typename WI, typename WC>
+void PackWords(graph_t &g, uint32_t *row_ptrs_beg, int to_pack_num, vector<vector<WI>> &word_indexes,
+               vector<vector<WC>> &words, Timer &tc_timer) {
+    constexpr int word_in_bits = sizeof(WC) * 8;
+    // Construct Words for Range [0, 32768), at most 512 words (given each word 64 bits)
+#pragma omp for schedule(dynamic, 100)
+    for (auto u = 0u; u < to_pack_num; u++) {
+        auto prev_blk_id = -1;
+        for (auto off = g.row_ptrs[u]; off < row_ptrs_beg[u]; off++) {
+            auto v = g.adj[off];
+            int cur_blk_id = v / word_in_bits;
+            if (cur_blk_id != prev_blk_id) {
+                prev_blk_id = cur_blk_id;
+                word_indexes[u].emplace_back(cur_blk_id);
+                words[u].emplace_back(0);
+            }
+            words[u].back() |= static_cast<WC>(1u) << (v % word_in_bits);
+        }
+    }
+#pragma omp single
+    {
+        log_info("Finish Indexing: %.9lfs", tc_timer.elapsed());
+    }
+}
 
 inline size_t CountTriBMPAndMergeWithPack(graph_t &g, int max_omp_threads) {
     Timer tc_timer;
@@ -16,7 +42,6 @@ inline size_t CountTriBMPAndMergeWithPack(graph_t &g, int max_omp_threads) {
     auto *row_ptrs_beg = (uint32_t *) malloc(sizeof(uint32_t) * (g.n + 1));
     size_t workload = 0;
     size_t workload_large_deg = 0;
-    int threshold = 32768; // word-packing for [0, 32768), otherwise normal table (using bitmap)
 
     using word_t = uint64_t;
     constexpr int word_in_bits = sizeof(word_t) * 8;
@@ -32,7 +57,7 @@ inline size_t CountTriBMPAndMergeWithPack(graph_t &g, int max_omp_threads) {
             row_ptrs_end[u + 1] = static_cast<uint32_t>(
                     lower_bound(g.adj + g.row_ptrs[u], g.adj + g.row_ptrs[u + 1], u) - g.adj);
             row_ptrs_beg[u] = lower_bound(g.adj + g.row_ptrs[u], g.adj + g.row_ptrs[u + 1],
-                                          min<int>(threshold, u)) - g.adj;
+                                          min<int>(FIRST_RANGE_SIZE, u)) - g.adj;
             max_d = max<int>(max_d, row_ptrs_end[u + 1] - g.row_ptrs[u]);
         }
 #pragma omp single
@@ -40,31 +65,13 @@ inline size_t CountTriBMPAndMergeWithPack(graph_t &g, int max_omp_threads) {
             log_info("finish init row_ptrs_end, max d: %d, time: %.9lfs", max_d, tc_timer.elapsed());
         }
 
-        // Construct Words for Range [0, 32768), at most 512 words (given each word 64 bits)
-#pragma omp for schedule(dynamic, 100)
-        for (auto u = 0u; u < to_pack_num; u++) {
-            auto prev_blk_id = -1;
-            for (auto off = g.row_ptrs[u]; off < row_ptrs_beg[u]; off++) {
-                auto v = g.adj[off];
-                int cur_blk_id = v / word_in_bits;
-                if (cur_blk_id != prev_blk_id) {
-                    prev_blk_id = cur_blk_id;
-                    word_indexes[u].emplace_back(cur_blk_id);
-                    words[u].emplace_back(0);
-                }
-                words[u].back() |= static_cast<word_t>(1u) << (v % word_in_bits);
-            }
-        }
-#pragma omp single
-        {
-            log_info("Finish Indexing: %.9lfs", tc_timer.elapsed());
-        }
+        PackWords(g, row_ptrs_beg, to_pack_num, word_indexes, words, tc_timer);
 
 #pragma omp for schedule(dynamic, 100) reduction(+:tc_cnt) reduction(+:workload)  reduction(+:workload_large_deg)
         for (auto u = 0u; u < g.n; u++) {
             // Set.
-            static thread_local BoolArray<word_t> bitmap(threshold);
-            static thread_local vector<word_t> buffer(threshold / word_in_bits);
+            static thread_local BoolArray<word_t> bitmap(FIRST_RANGE_SIZE);
+            static thread_local vector<word_t> buffer(FIRST_RANGE_SIZE / word_in_bits);
             if (u < to_pack_num) {
                 for (size_t i = 0; i < word_indexes[u].size(); i++) {
                     bitmap.setWord(word_indexes[u][i], words[u][i]);
@@ -81,24 +88,33 @@ inline size_t CountTriBMPAndMergeWithPack(graph_t &g, int max_omp_threads) {
                 auto v = g.adj[edge_idx];
                 auto cn_count = 0;
                 // First Range.
-                if (v < to_pack_num) {
-                    auto num_words_v = word_indexes[v].size();
-                    for (size_t i = 0; i < num_words_v; i++) {
+                if (g.row_ptrs[u] < row_ptrs_beg[u]) {
+                    if (v < to_pack_num) {
+                        auto num_words_v = word_indexes[v].size();
+                        for (size_t i = 0; i < num_words_v; i++) {
 #ifdef WORKLOAD_STAT
-                        workload++;
-                        workload_large_deg++;
+                            workload++;
+                            workload_large_deg++;
 #endif
-                        buffer[i] = bitmap.getWord(word_indexes[v][i]);
-                    }
-                    for (size_t i = 0; i < num_words_v; i++) {
-                        buffer[i] &= words[v][i];
-                    }
-                    cn_count += popcnt(&buffer.front(), sizeof(word_t) * num_words_v);
-                } else {
-                    for (auto off = g.row_ptrs[v]; off < row_ptrs_beg[v]; off++) {
-                        workload++;
-                        auto w = g.adj[off];
-                        if (bitmap[w])cn_count++;
+                            buffer[i] = bitmap.getWord(word_indexes[v][i]);
+                        }
+                        for (size_t i = 0; i < num_words_v; i++) {
+                            buffer[i] &= words[v][i];
+                        }
+                        cn_count += popcnt(&buffer.front(), sizeof(word_t) * num_words_v);
+                    } else {
+#ifdef BMP
+                        for (auto off = g.row_ptrs[v]; off < row_ptrs_beg[v]; off++) {
+                            workload++;
+                            auto w = g.adj[off];
+                            if (bitmap[w])cn_count++;
+                        }
+#else
+                        if (g.row_ptrs[v] < row_ptrs_beg[v]) {
+                            cn_count += SetInterCntVecMerge(&g, g.row_ptrs[u], row_ptrs_beg[u], g.row_ptrs[v],
+                                                            row_ptrs_beg[v]);
+                        }
+#endif
                     }
                 }
 
@@ -108,17 +124,8 @@ inline size_t CountTriBMPAndMergeWithPack(graph_t &g, int max_omp_threads) {
 #ifdef WORKLOAD_STAT
                     workload += du + dv;
 #endif
-
-#ifdef __AVX2__
-                    cn_count += SetInterCntAVX2Detail(&g, row_ptrs_beg[u], row_ptrs_end[u + 1], row_ptrs_beg[v],
-                                                       row_ptrs_end[v + 1]);
-#elif defined(__SSE4_1__)
-                    cn_count += SetInterCntSSE4Detail(&g, row_ptrs_beg[u], row_ptrs_end[u + 1], row_ptrs_beg[v],
-                                                      row_ptrs_end[v + 1]);
-#else
-                    cn_count += SetIntersectionScalarCntDetail(&g, row_ptrs_beg[u], row_ptrs_end[u + 1],
-                                                           row_ptrs_beg[v], row_ptrs_end[v + 1]);
-#endif
+                    cn_count += SetInterCntVecMerge(&g, row_ptrs_beg[u], row_ptrs_end[u + 1],
+                                                    row_ptrs_beg[v], row_ptrs_end[v + 1]);
                 }
                 tc_cnt += cn_count;
             }
@@ -132,7 +139,7 @@ inline size_t CountTriBMPAndMergeWithPack(graph_t &g, int max_omp_threads) {
 #ifdef WORKLOAD_STAT
     log_info("Workload: %s, avg: %s", FormatWithCommas(workload).c_str(),
              FormatWithCommas(workload / (g.m / 2)).c_str());
-    log_info("Workload (large-deg vid in [0, %d]): %s, avg: %s", threshold,
+    log_info("Workload (large-deg vid in [0, %d]): %s, avg: %s", FIRST_RANGE_SIZE,
              FormatWithCommas(workload_large_deg).c_str(),
              FormatWithCommas(workload_large_deg / (g.m / 2)).c_str());
 #endif
@@ -147,7 +154,6 @@ inline size_t CountTriBMPWithPack(graph_t &g, int max_omp_threads) {
     auto *row_ptrs_beg = (uint32_t *) malloc(sizeof(uint32_t) * (g.n + 1));
     size_t workload = 0;
     size_t workload_large_deg = 0;
-    int threshold = 32768; // word-packing for [0, 32768), otherwise normal table (using bitmap)
 
     using word_t = uint64_t;
     constexpr int word_in_bits = sizeof(word_t) * 8;
@@ -164,7 +170,7 @@ inline size_t CountTriBMPWithPack(graph_t &g, int max_omp_threads) {
             row_ptrs_end[u + 1] = static_cast<uint32_t>(
                     lower_bound(g.adj + g.row_ptrs[u], g.adj + g.row_ptrs[u + 1], u) - g.adj);
             row_ptrs_beg[u] = lower_bound(g.adj + g.row_ptrs[u], g.adj + g.row_ptrs[u + 1],
-                                          min<int>(threshold, u)) - g.adj;
+                                          min<int>(FIRST_RANGE_SIZE, u)) - g.adj;
             max_d = max<int>(max_d, row_ptrs_end[u + 1] - g.row_ptrs[u]);
         }
 #pragma omp single
@@ -172,33 +178,16 @@ inline size_t CountTriBMPWithPack(graph_t &g, int max_omp_threads) {
             log_info("finish init row_ptrs_end, max d: %d, time: %.9lfs", max_d, tc_timer.elapsed());
         }
 
-        // Construct Words for Range [0, 32768), at most 512 words (given each word 64 bits)
-#pragma omp for schedule(dynamic, 100)
-        for (auto u = 0u; u < to_pack_num; u++) {
-            auto prev_blk_id = -1;
-            for (auto off = g.row_ptrs[u]; off < row_ptrs_beg[u]; off++) {
-                auto v = g.adj[off];
-                int cur_blk_id = v / word_in_bits;
-                if (cur_blk_id != prev_blk_id) {
-                    prev_blk_id = cur_blk_id;
-                    word_indexes[u].emplace_back(cur_blk_id);
-                    words[u].emplace_back(0);
-                }
-                words[u].back() |= static_cast<word_t>(1u) << (v % word_in_bits);
-            }
-        }
-#pragma omp single
-        {
-            log_info("Finish Indexing: %.9lfs", tc_timer.elapsed());
-        }
+        PackWords(g, row_ptrs_beg, to_pack_num, word_indexes, words, tc_timer);
 
 #pragma omp for schedule(dynamic, 100) reduction(+:tc_cnt) reduction(+:workload)  reduction(+:workload_large_deg)
         for (auto u = 0u; u < g.n; u++) {
             // Set.
-            static thread_local BoolArray<word_t> bitmap(threshold);
+            static thread_local BoolArray<word_t> bitmap(FIRST_RANGE_SIZE);
+            static thread_local vector<word_t> buffer(FIRST_RANGE_SIZE / word_in_bits);
+
             if (u < to_pack_num) {
                 for (size_t i = 0; i < word_indexes[u].size(); i++) {
-//                    assert(word_indexes[u][i] < threshold / word_in_bits);
                     bitmap.setWord(word_indexes[u][i], words[u][i]);
                 }
             } else {
@@ -217,13 +206,18 @@ inline size_t CountTriBMPWithPack(graph_t &g, int max_omp_threads) {
                 auto v = g.adj[edge_idx];
                 auto cn_count = 0;
                 if (v < to_pack_num) {
-                    for (size_t i = 0; i < word_indexes[v].size(); i++) {
+                    auto num_words_v = word_indexes[v].size();
+                    for (size_t i = 0; i < num_words_v; i++) {
 #ifdef WORKLOAD_STAT
+                        workload++;
                         workload_large_deg++;
 #endif
-                        word_t word = bitmap.getWord(word_indexes[v][i]) & words[v][i];
-                        cn_count += popcnt(&word, sizeof(word_t));
+                        buffer[i] = bitmap.getWord(word_indexes[v][i]);
                     }
+                    for (size_t i = 0; i < num_words_v; i++) {
+                        buffer[i] &= words[v][i];
+                    }
+                    cn_count += popcnt(&buffer.front(), sizeof(word_t) * num_words_v);
                 } else {
                     for (auto off = g.row_ptrs[v]; off < row_ptrs_beg[v]; off++) {
                         auto w = g.adj[off];
@@ -236,9 +230,6 @@ inline size_t CountTriBMPWithPack(graph_t &g, int max_omp_threads) {
                     workload++;
 #endif
                     auto w = g.adj[offset];
-#ifdef WORKLOAD_STAT
-                    workload_large_deg += w < threshold ? 1 : 0;
-#endif
                     if (bits_vec[w]) {
                         cn_count++;
                     }
@@ -261,7 +252,7 @@ inline size_t CountTriBMPWithPack(graph_t &g, int max_omp_threads) {
 #ifdef WORKLOAD_STAT
     log_info("Workload: %s, avg: %s", FormatWithCommas(workload).c_str(),
              FormatWithCommas(workload / (g.m / 2)).c_str());
-    log_info("Workload (large-deg vid in [0, %d]): %s, avg: %s", threshold,
+    log_info("Workload (large-deg vid in [0, %d]): %s, avg: %s", FIRST_RANGE_SIZE,
              FormatWithCommas(workload_large_deg).c_str(),
              FormatWithCommas(workload_large_deg / (g.m / 2)).c_str());
 #endif
@@ -275,7 +266,6 @@ inline size_t CountTriBMP(graph_t &g, int max_omp_threads) {
     auto *row_ptrs_end = (uint32_t *) malloc(sizeof(uint32_t) * (g.n + 1));
     size_t workload = 0;
     size_t workload_large_deg = 0;
-    int threshold = 32768;
 #pragma omp parallel num_threads(max_omp_threads)
     {
         // Bit vectors.
@@ -310,7 +300,7 @@ inline size_t CountTriBMP(graph_t &g, int max_omp_threads) {
                 for (auto offset = g.row_ptrs[v]; offset < row_ptrs_end[v + 1]; offset++) {
                     workload++;
                     auto w = g.adj[offset];
-                    workload_large_deg += w < threshold ? 1 : 0;
+                    workload_large_deg += w < FIRST_RANGE_SIZE ? 1 : 0;
 
                     if (bits_vec[w]) {
                         cn_count++;
@@ -332,7 +322,7 @@ inline size_t CountTriBMP(graph_t &g, int max_omp_threads) {
 #ifdef WORKLOAD_STAT
     log_info("Workload: %s, avg: %s", FormatWithCommas(workload).c_str(),
              FormatWithCommas(workload / (g.m / 2)).c_str());
-    log_info("Workload (large-deg vid in [0, %d]): %s, avg: %s", threshold,
+    log_info("Workload (large-deg vid in [0, %d]): %s, avg: %s", FIRST_RANGE_SIZE,
              FormatWithCommas(workload_large_deg).c_str(),
              FormatWithCommas(workload_large_deg / (g.m / 2)).c_str());
 #endif

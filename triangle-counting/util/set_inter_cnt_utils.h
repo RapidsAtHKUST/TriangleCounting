@@ -7,7 +7,7 @@
 
 using eid_t = uint32_t;
 
-#define ENABLE_AVX2
+//#define ENABLE_AVX2
 
 inline int SetInterLookup(graph_t *g, eid_t off_nei_u, eid_t uEnd, eid_t off_nei_v, eid_t vEnd) {
     if (uEnd - off_nei_u > vEnd - off_nei_v) {
@@ -361,3 +361,15 @@ inline int SetIntersectionMergeAVX512Detail(graph_t *g, eid_t off_nei_u, eid_t u
 #endif
 
 #endif
+
+inline int SetInterCntVecMerge(graph_t *g, uint32_t off_nei_u, uint32_t uEnd, uint32_t off_nei_v, uint32_t vEnd) {
+    int cn_count = 0;
+#ifdef __AVX2__
+    cn_count = SetInterCntAVX2Detail(g, off_nei_u, uEnd, off_nei_v, vEnd);
+#elif defined(__SSE4_1__)
+    cn_count = SetInterCntSSE4Detail(g, off_nei_u, uEnd, off_nei_v, vEnd);
+#else
+    cn_count = SetIntersectionScalarCntDetail(g, off_nei_u, uEnd, off_nei_v, vEnd);
+#endif
+    return cn_count;
+}
