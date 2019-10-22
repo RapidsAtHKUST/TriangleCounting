@@ -39,7 +39,9 @@ int main(int argc, char *argv[]) {
         auto file_fd = open(file_name.c_str(), O_RDONLY, S_IRUSR | S_IWUSR);
         Edge *edge_lst = (Edge *) malloc(size);
         Edge *edge_lst_buffer = (Edge *) malloc(size);
-
+#ifndef USE_LOG
+        omp_set_num_threads(std::thread::hardware_concurrency());
+#endif
         auto max_omp_threads = omp_get_max_threads();
 #pragma omp parallel num_threads(max_omp_threads)
         {
