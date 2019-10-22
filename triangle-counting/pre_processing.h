@@ -32,7 +32,7 @@ T RemoveDuplicates(pair<T, T> *&edge_lst, I &num_edges, pair<T, T> *&edge_lst_bu
         BucketSort(histogram, edge_lst, edge_lst_buffer, cur_write_off, bucket_ptrs, num_edges, num_buckets,
                    [&edge_lst](int i) {
                        return edge_lst[i].first;
-                   }, max_omp_threads, &timer);
+                   }, &timer);
 
         // Sort.
 #pragma omp for schedule(dynamic, 600)
@@ -54,7 +54,7 @@ T RemoveDuplicates(pair<T, T> *&edge_lst, I &num_edges, pair<T, T> *&edge_lst_bu
     {
         SelectNotFOMP(histogram, edge_lst_buffer, edge_lst, relative_off, num_edges, [edge_lst](uint32_t it) {
             return edge_lst[it].first == edge_lst[it].second || (it > 0 && edge_lst[it - 1] == edge_lst[it]);
-        }, max_omp_threads);
+        });
     }
     swap(edge_lst, edge_lst_buffer);
     num_edges = num_edges - relative_off[num_edges - 1];
@@ -75,9 +75,8 @@ void ConvertEdgeListToCSR(uint32_t num_edges, pair<T, T> *edge_lst,
 
 #pragma omp parallel num_threads(max_omp_threads)
     {
-        auto tid = omp_get_thread_num();
-        MemSetOMP(deg_lst, 0, num_vertices + 1, tid, max_omp_threads);
-        MemSetOMP(off, 0, num_vertices + 1, tid, max_omp_threads);
+        MemSetOMP(deg_lst, 0, num_vertices + 1);
+        MemSetOMP(off, 0, num_vertices + 1);
         auto local_buf = (uint8_t *) calloc(num_vertices, sizeof(uint8_t));
 #pragma omp single
         log_info("[%s]: InitTime: %.9lf s", __FUNCTION__, convert_timer.elapsed());
@@ -113,8 +112,8 @@ void ConvertEdgeListToCSR(uint32_t num_edges, pair<T, T> *edge_lst,
         // PrefixSum.
         InclusivePrefixSumOMP(histogram, off + 1, num_vertices, [&deg_lst](uint32_t it) {
             return deg_lst[it];
-        }, max_omp_threads);
-        MemCpyOMP(cur_write_off, off, num_vertices + 1, tid, max_omp_threads);
+        });
+        MemCpyOMP(cur_write_off, off, num_vertices + 1);
 
         // Scatter.
 #pragma omp single
@@ -154,7 +153,6 @@ inline void Reorder(graph_t &g, vector<int32_t> &new_vid_dict, vector<int32_t> &
 
 #pragma omp parallel num_threads(max_omp_threads)
     {
-        auto tid = omp_get_thread_num();
         // 1st CSR: new_off, new_adj
 #pragma omp for
         for (auto i = 0; i < g.n; i++) {
@@ -163,7 +161,7 @@ inline void Reorder(graph_t &g, vector<int32_t> &new_vid_dict, vector<int32_t> &
         InclusivePrefixSumOMP(histogram, &new_off.front() + 1, g.n, [&g, &old_vid_dict](uint32_t new_id) {
             auto vertex = old_vid_dict[new_id];
             return g.row_ptrs[vertex + 1] - g.row_ptrs[vertex];
-        }, max_omp_threads);
+        });
 #pragma omp single
         log_info("[%s]: Finish PrefixSum Time: %.9lf s", __FUNCTION__, timer.elapsed_and_reset());
 
@@ -181,7 +179,7 @@ inline void Reorder(graph_t &g, vector<int32_t> &new_vid_dict, vector<int32_t> &
             sort(new_adj + new_off[i], new_adj + new_off[i + 1]);
         }
 
-        MemCpyOMP(g.row_ptrs, &new_off.front(), (g.n + 1), tid, max_omp_threads);
+        MemCpyOMP(g.row_ptrs, &new_off.front(), (g.n + 1));
     }
     swap(g.adj, new_adj);
     log_info("[%s]: Finish Reorder Time: %.3lf s", __FUNCTION__, timer.elapsed());
@@ -218,9 +216,8 @@ inline void ReorderDegDescending(graph_t &g, vector<int32_t> &new_vid_dict, vect
         BucketSortSmallBuckets(histogram, old_vid_dict_buffer, ptr, write_off, bucket_ptrs,
                                g.n, max_deg + 1, [&g, old_vid_dict_buffer, max_deg](int i) {
                     auto u = old_vid_dict_buffer[i];
-//                    assert(u < g.n);
                     return max_deg - (g.row_ptrs[u + 1] - g.row_ptrs[u]);
-                }, max_omp_threads);
+                });
     }
     free(write_off);
     free(bucket_ptrs);

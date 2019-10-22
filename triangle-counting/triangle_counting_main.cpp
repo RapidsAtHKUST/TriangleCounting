@@ -67,9 +67,8 @@ int main(int argc, char *argv[]) {
         log_info("Load Edge List Time: %.9lf s", global_timer.elapsed());
 
         // Convert Edge List to CSR.
-        graph_t g;
-        g.n = num_vertices;
-        g.m = 2L * num_edges;
+        graph_t g{.n=num_vertices, .m = static_cast<long>(2L * num_edges),
+                .adj=nullptr, .row_ptrs=nullptr};
         uint32_t *deg_lst;
         log_info("Undirected Graph G = (|V|, |E|): %lld, %lld", g.n, g.m / 2);
 

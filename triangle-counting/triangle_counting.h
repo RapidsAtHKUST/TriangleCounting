@@ -9,8 +9,8 @@
 #define FIRST_RANGE_SIZE (32768)
 //#define WORKLOAD_STAT
 
-template<typename WI, typename WC>
-void PackWords(graph_t &g, uint32_t *row_ptrs_beg, int to_pack_num, vector<vector<WI>> &word_indexes,
+template<typename OFF, typename WI, typename WC>
+void PackWords(graph_t &g, OFF *row_ptrs_beg, int to_pack_num, vector<vector<WI>> &word_indexes,
                vector<vector<WC>> &words, Timer &tc_timer) {
     constexpr int word_in_bits = sizeof(WC) * 8;
     // Construct Words for Range [0, 32768), at most 512 words (given each word 64 bits)

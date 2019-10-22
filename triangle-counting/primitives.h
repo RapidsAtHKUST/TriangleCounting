@@ -13,7 +13,10 @@ using namespace std;
 #define LOCAL_BUDGET (8*1024*1024)
 
 template<typename T>
-void MemSetOMP(T *arr, int val, size_t size, size_t tid, size_t max_omp_threads) {
+void MemSetOMP(T *arr, int val, size_t size) {
+    size_t tid = omp_get_thread_num();
+    size_t max_omp_threads = omp_get_num_threads();
+
     size_t task_num = size;
     size_t avg = (task_num + max_omp_threads - 1) / max_omp_threads;
     auto it_beg = avg * tid;
@@ -23,7 +26,10 @@ void MemSetOMP(T *arr, int val, size_t size, size_t tid, size_t max_omp_threads)
 }
 
 template<typename T>
-void MemCpyOMP(T *dst, T *src, size_t size, size_t tid, size_t max_omp_threads) {
+void MemCpyOMP(T *dst, T *src, size_t size) {
+    size_t tid = omp_get_thread_num();
+    size_t max_omp_threads = omp_get_num_threads();
+
     size_t task_num = size;
     size_t avg = (task_num + max_omp_threads - 1) / max_omp_threads;
     auto it_beg = avg * tid;
@@ -39,11 +45,13 @@ void MemCpyOMP(T *dst, T *src, size_t size, size_t tid, size_t max_omp_threads) 
  * size: is the original size for the flagged prefix sum
  * f: requires it as the parameter, f(it) return the histogram value of that it
  */
-template<typename T, typename F>
-void InclusivePrefixSumOMP(vector<uint32_t> &histogram, T *output, size_t size, F f, int omp_num_threads) {
+template<typename H, typename T, typename F>
+void InclusivePrefixSumOMP(vector<H> &histogram, T *output, size_t size, F f) {
+    int omp_num_threads = omp_get_num_threads();
+
 #pragma omp single
     {
-        histogram = vector<uint32_t>((omp_num_threads + 1) * CACHE_LINE_ENTRY, 0);
+        histogram = vector<H>((omp_num_threads + 1) * CACHE_LINE_ENTRY, 0);
     }
     static thread_local int tid = omp_get_thread_num();
     // 1st Pass: Histogram.
@@ -82,21 +90,21 @@ void InclusivePrefixSumOMP(vector<uint32_t> &histogram, T *output, size_t size, 
 /*
  * FlagPrefixSumOMP: special case of InclusivePrefixSumOMP
  */
-template<typename T, typename F>
-void FlagPrefixSumOMP(vector<uint32_t> &histogram, T *output, size_t size, F f, int omp_num_threads) {
+template<typename H, typename T, typename F>
+void FlagPrefixSumOMP(vector<H> &histogram, T *output, size_t size, F f) {
     InclusivePrefixSumOMP(histogram, output, size, [&f](size_t it) {
         return f(it) ? 1 : 0;
-    }, omp_num_threads);
+    });
 }
 
 /*
  * SelectNotFOMP: selection primitive
  * !f(it) returns selected
  */
-template<typename T, typename OFF, typename F>
-void SelectNotFOMP(vector<uint32_t> &histogram, T *output, T *input,
-                   OFF *relative_off, size_t size, F f, int omp_num_threads) {
-    FlagPrefixSumOMP(histogram, relative_off, size, f, omp_num_threads);
+template<typename H, typename T, typename OFF, typename F>
+void SelectNotFOMP(vector<H> &histogram, T *output, T *input,
+                   OFF *relative_off, size_t size, F f) {
+    FlagPrefixSumOMP(histogram, relative_off, size, f);
 #pragma omp for
     for (size_t i = 0u; i < size; i++) {
         if (!(f(i))) {
@@ -145,12 +153,10 @@ void HistogramAtomic(size_t size, OFF *&bucket_ptrs, int32_t num_buckets, F f) {
  * f: is the property for the bucket ID, given an index on the input array
  * Inefficient when there are lots of contentions because of atomic operations
  */
-template<typename T, typename OFF, typename F>
-void BucketSort(vector<uint32_t> &histogram, T *&input, T *&output,
+template<typename H, typename T, typename OFF, typename F>
+void BucketSort(vector<H> &histogram, T *&input, T *&output,
                 OFF *&cur_write_off, OFF *&bucket_ptrs,
-                size_t size, int32_t num_buckets, F f, int max_omp_threads, Timer *timer = nullptr) {
-    int tid = omp_get_thread_num();
-
+                size_t size, int32_t num_buckets, F f, Timer *timer = nullptr) {
     // Populate.
 #pragma omp single
     {
@@ -158,15 +164,15 @@ void BucketSort(vector<uint32_t> &histogram, T *&input, T *&output,
         cur_write_off = (OFF *) malloc(sizeof(OFF) * (num_buckets + 1));
         cur_write_off[0] = 0;
     }
-    MemSetOMP(bucket_ptrs, 0, num_buckets + 1, tid, max_omp_threads);
+    MemSetOMP(bucket_ptrs, 0, num_buckets + 1);
     Histogram(size, bucket_ptrs, num_buckets, f, timer);
 //    HistogramAtomic(size, bucket_ptrs, num_buckets, f);
 #pragma omp single
     if (timer != nullptr)log_info("[%s]: Histogram, Time: %.9lfs", __FUNCTION__, timer->elapsed());
     InclusivePrefixSumOMP(histogram, cur_write_off + 1, num_buckets, [&bucket_ptrs](uint32_t it) {
         return bucket_ptrs[it];
-    }, max_omp_threads);
-    MemCpyOMP(bucket_ptrs, cur_write_off, num_buckets + 1, tid, max_omp_threads);
+    });
+    MemCpyOMP(bucket_ptrs, cur_write_off, num_buckets + 1);
 
 #pragma omp single
     {
@@ -187,11 +193,10 @@ void BucketSort(vector<uint32_t> &histogram, T *&input, T *&output,
 #pragma omp barrier
 }
 
-template<typename T, typename OFF, typename F>
-void BucketSortSmallBuckets(vector<uint32_t> &histogram, T *&input, T *&output,
+template<typename H, typename T, typename OFF, typename F>
+void BucketSortSmallBuckets(vector<H> &histogram, T *&input, T *&output,
                             OFF *&cur_write_off, OFF *&bucket_ptrs,
-                            size_t size, int32_t num_buckets, F f, int max_omp_threads, Timer *timer = nullptr) {
-    int tid = omp_get_thread_num();
+                            size_t size, int32_t num_buckets, F f, Timer *timer = nullptr) {
     using BufT= LocalWriteBuffer<T, uint32_t>;
     auto cap = max<int>(CACHE_LINE_ENTRY, LOCAL_BUDGET / num_buckets / sizeof(T));
     auto bucket_write_buffers = (BufT *) malloc(num_buckets * sizeof(BufT));
@@ -199,6 +204,7 @@ void BucketSortSmallBuckets(vector<uint32_t> &histogram, T *&input, T *&output,
     // Populate.
 #pragma omp single
     {
+        int max_omp_threads = omp_get_num_threads();
         log_info("[%s]: Mem Size Buckets: %zu, Bucket#: %d",
                  __FUNCTION__,
                  cap * num_buckets * sizeof(T) * max_omp_threads, num_buckets);
@@ -206,14 +212,14 @@ void BucketSortSmallBuckets(vector<uint32_t> &histogram, T *&input, T *&output,
         cur_write_off = (uint32_t *) malloc(sizeof(OFF) * (num_buckets + 1));
         cur_write_off[0] = 0;
     }
-    MemSetOMP(bucket_ptrs, 0, num_buckets + 1, tid, max_omp_threads);
+    MemSetOMP(bucket_ptrs, 0, num_buckets + 1);
     Histogram(size, bucket_ptrs, num_buckets, f);
 
 #pragma omp barrier
     InclusivePrefixSumOMP(histogram, cur_write_off + 1, num_buckets, [&bucket_ptrs](uint32_t it) {
         return bucket_ptrs[it];
-    }, max_omp_threads);
-    MemCpyOMP(bucket_ptrs, cur_write_off, num_buckets + 1, tid, max_omp_threads);
+    });
+    MemCpyOMP(bucket_ptrs, cur_write_off, num_buckets + 1);
 
 #pragma omp single
     {
