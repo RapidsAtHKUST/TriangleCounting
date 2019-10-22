@@ -46,8 +46,6 @@ int main(int argc, char *argv[]) {
 #pragma omp parallel num_threads(max_omp_threads)
         {
             auto tid = omp_get_thread_num();
-//            MemSetOMP(edge_lst, 0, size / sizeof(Edge), tid, max_omp_threads);
-//            MemSetOMP(edge_lst_buffer, 0, size / sizeof(Edge), tid, max_omp_threads);
 #pragma omp single
             log_info("Populate Mem Time: %.9lfs", global_timer.elapsed());
 
@@ -90,14 +88,7 @@ int main(int argc, char *argv[]) {
 
         // All-Edge Triangle Counting.
         size_t tc_cnt = 0;
-#ifdef BASELINE
-#pragma omp parallel for schedule(dynamic, 6000) reduction(+:tc_cnt)
-        for (auto i = 0u; i < g.m; i++)
-            ComputeSupport(&g, tc_cnt, i);
-        tc_cnt /= 3;
-#else
         tc_cnt = CountTriBMPAndMergeWithPack(g, max_omp_threads);
-#endif
 
         log_info("There are %zu triangles in the input graph.", tc_cnt);
         printf("There are %zu triangles in the input graph.\n", tc_cnt);

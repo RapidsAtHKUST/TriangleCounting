@@ -1,7 +1,7 @@
 #pragma once
 
 #include "primitives.h"
-#include "tc_utils.h"
+#include "graph.h"
 
 template<typename T, typename I>
 T RemoveDuplicates(pair<T, T> *&edge_lst, I &num_edges, pair<T, T> *&edge_lst_buffer) {

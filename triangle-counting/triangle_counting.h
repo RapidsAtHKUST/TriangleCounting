@@ -1,7 +1,7 @@
 #pragma once
 
-#include "tc_utils.h"
-#include "util/radix_hash_map.h"
+#include "util/boolarray.h"
+#include "graph.h"
 #include "util/libpopcnt.h"
 #include "util/set_inter_cnt_utils.h"
 

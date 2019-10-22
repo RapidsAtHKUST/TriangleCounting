@@ -2,7 +2,7 @@
 
 #include <x86intrin.h>
 
-#include "../tc_utils.h"
+#include "../graph.h"
 #include "search_util.h"
 
 using eid_t = uint32_t;

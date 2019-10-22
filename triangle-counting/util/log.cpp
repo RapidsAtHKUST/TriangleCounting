@@ -32,11 +32,14 @@
 #include <mutex>
 #include <cmath>
 
+#include "timer.h"
+
 using namespace std;
 using namespace std::chrono;
 
 std::mutex global_log_mutex;
-time_point<high_resolution_clock> clk_beg = high_resolution_clock::now();
+Timer timer;
+
 static struct {
     void *udata;
     log_LockFn lock;
@@ -98,14 +101,13 @@ void log_set_quiet(int enable) {
 }
 
 
-void log_log(int level, const char *file, int line, const char *fmt, ...) {
+void log_log(int level, const char *file, const char *func, int line, const char *fmt, ...) {
     if (level < L.level) {
         return;
     }
 
     using namespace std::chrono;
-    time_point<high_resolution_clock> clock_now = high_resolution_clock::now();
-    auto elapsed_time = duration_cast<nanoseconds>(clock_now - clk_beg).count();
+    auto elapsed_time = timer.elapsed();
     {
         unique_lock<mutex> lock_global(global_log_mutex);
         /* Acquire lock */
@@ -122,15 +124,12 @@ void log_log(int level, const char *file, int line, const char *fmt, ...) {
             buf[strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", lt)] = '\0';
 #ifdef LOG_USE_COLOR
             fprintf(
-                    stderr, "%s %s%-5s (ts: %.6lf s, et: %.6lf s) \x1b[0m \x1b[90m%s:%d:\x1b[0m ",
+                    stderr, "%s %s%-5s (et: %.6lf s)\x1b[0m\x1b[36m (func: %s) \x1b[0m \x1b[90m%s:%d:\x1b[0m ",
                     buf, level_colors[level], level_names[level],
-                    duration_cast<nanoseconds>(clock_now.time_since_epoch()).count() / pow(10, 9),
-                    elapsed_time / pow(10, 9),
-                    file, line);
+                    elapsed_time, func, file, line);
 #else
-            fprintf(stderr, "%s %-5s (ts: %.6lf s, et: %.6lf s) %s:%d: ", buf, level_names[level],
-                    duration_cast<nanoseconds>(clock_now.time_since_epoch()).count() / pow(10, 9),
-                    elapsed_time / pow(10, 9), file, line);
+            fprintf(stderr, "%s %-5s (et: %.6lf s) %s:%d: ", buf, level_names[level],
+                    elapsed_time,  func, file, line);
 #endif
             va_start(args, fmt);
             vfprintf(stderr, fmt, args);
@@ -143,9 +142,8 @@ void log_log(int level, const char *file, int line, const char *fmt, ...) {
             va_list args;
             char buf[32];
             buf[strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", lt)] = '\0';
-            fprintf(L.fp, "%s %-5s (ts: %.6lf s,  et: %.6lf s) %s:%d: ", buf, level_names[level],
-                    duration_cast<nanoseconds>(clock_now.time_since_epoch()).count() / pow(10, 9),
-                    elapsed_time / pow(10, 9), file, line);
+            fprintf(L.fp, "%s %-5s (et: %.6lf s) (func: %s) %s:%d: ", buf, level_names[level],
+                    elapsed_time, func, file, line);
             va_start(args, fmt);
             vfprintf(L.fp, fmt, args);
             va_end(args);
