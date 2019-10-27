@@ -21,12 +21,12 @@ T RemoveDuplicates(pair<T, T> *&edge_lst, I &num_edges, pair<T, T> *&edge_lst_bu
         for (I i = 0u; i < num_edges; i++) {
             if (edge_lst[i].first > edge_lst[i].second) {
                 swap(edge_lst[i].first, edge_lst[i].second);
-                max_node_id = max(max_node_id, max(edge_lst[i].first, edge_lst[i].second));
             }
+            max_node_id = max(max_node_id, max(edge_lst[i].first, edge_lst[i].second));
         }
 #pragma omp single
         {
-            num_buckets = max_node_id;
+            num_buckets = max_node_id + 1;
         }
         // Partition.
         BucketSort(histogram, edge_lst, edge_lst_buffer, cur_write_off, bucket_ptrs, num_edges, num_buckets,
@@ -60,6 +60,7 @@ T RemoveDuplicates(pair<T, T> *&edge_lst, I &num_edges, pair<T, T> *&edge_lst_bu
     num_edges = num_edges - relative_off[num_edges - 1];
     free(relative_off);
     log_info("New # of edges: %zu, Elapsed: %.9lfs", num_edges, timer.elapsed());
+    log_debug("max_node_id: %d", max_node_id);
     return max_node_id;
 }
 
@@ -72,7 +73,6 @@ void ConvertEdgeListToCSR(uint32_t num_edges, pair<T, T> *edge_lst,
     off = (uint32_t *) (uint32_t *) malloc(sizeof(uint32_t) * (num_vertices + 1));
     auto cur_write_off = (uint32_t *) malloc(sizeof(uint32_t) * (num_vertices + 1));
     vector<uint32_t> histogram;
-
 #pragma omp parallel num_threads(max_omp_threads)
     {
         MemSetOMP(deg_lst, 0, num_vertices + 1);

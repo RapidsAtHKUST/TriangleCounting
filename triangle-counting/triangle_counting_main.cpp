@@ -74,6 +74,7 @@ int main(int argc, char *argv[]) {
 
         g.adj = reinterpret_cast<int32_t *>(edge_lst_buffer);
         ConvertEdgeListToCSR(num_edges, edge_lst, num_vertices, deg_lst, g.row_ptrs, g.adj, max_omp_threads);
+        log_debug("%d, %d", g.row_ptrs[num_vertices], 2 * num_edges);
         assert(g.row_ptrs[num_vertices] == 2 * num_edges);
 
         vector<int32_t> new_dict;
