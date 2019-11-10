@@ -7,8 +7,6 @@
 
 #include <omp.h>
 
-#include "ips4o/ips4o.hpp"
-
 #include "util/log.h"
 #include "util/popl.h"
 #include "util/parasort_cmp.h"
@@ -41,6 +39,7 @@ int main(int argc, char *argv[]) {
         auto file_name = string_option->value(0);
         auto file_fd = open(file_name.c_str(), O_RDONLY, S_IRUSR | S_IWUSR);
         Edge *edge_lst = (Edge *) malloc(size);
+        Edge *edge_lst_buffer = (Edge *) malloc(size);
 #ifndef USE_LOG
         omp_set_num_threads(std::thread::hardware_concurrency());
 #endif
@@ -61,52 +60,48 @@ int main(int argc, char *argv[]) {
         log_info("Load File Time: %.9lfs", global_timer.elapsed());
 
         // Remove Multi-Edges and Self-Loops.
-        Timer sort_timer;
-        ips4o::parallel::sort(edge_lst, edge_lst + num_edges, [](Edge l, Edge r) {
-            if (l.first == r.first) {
-                return l.second < r.second;
-            }
-            return l.first < r.first;
-        });
-        log_info("Sort Time: %.9lfs", sort_timer.elapsed());
+        log_info("[%s] Mem: %d KB", __FUNCTION__, getValue());
+        auto max_node_id = RemoveDuplicates(edge_lst, num_edges, edge_lst_buffer);
+        log_info("[%s] Mem: %d KB", __FUNCTION__, getValue());
 
-        int32_t max_node_id = 0;
-#pragma omp parallel
-        {
-#pragma omp for reduction(max: max_node_id)
-            for (size_t i = 0; i < num_edges; i++) {
-                max_node_id = max(max_node_id, max(edge_lst[i].first, edge_lst[i].second));
-            }
-        }
         auto num_vertices = static_cast<uint32_t >(max_node_id) + 1;
         log_info("Load Edge List Time: %.9lf s", global_timer.elapsed());
 
         // Convert Edge List to CSR.
-        graph_t g{.n=num_vertices, .m = 0,
+        graph_t g{.n=num_vertices, .m = static_cast<long>(2L * num_edges),
                 .adj=nullptr, .row_ptrs=nullptr};
         uint32_t *deg_lst;
-        g.adj = (int32_t *) malloc(size / 2);
-        ConvertEdgeListToDODGCSR(num_edges, edge_lst, num_vertices, deg_lst, g.row_ptrs, g.adj,
-                                 max_omp_threads, [=](size_t it) {
-                    return !(edge_lst[it].first == edge_lst[it].second
-                             || (it > 0 && edge_lst[it - 1] == edge_lst[it]));
-                });
-        assert(g.row_ptrs[num_vertices] <= num_edges);
-        g.m = g.row_ptrs[num_vertices];
-        log_info("Undirected Graph G = (|V|, |E|): %lld, %lld", g.n, g.m);
+        log_info("Undirected Graph G = (|V|, |E|): %lld, %lld", g.n, g.m / 2);
+
+        g.adj = reinterpret_cast<int32_t *>(edge_lst_buffer);
+#ifdef DODG
+        ConvertEdgeListToDODGCSR(num_edges, edge_lst, num_vertices, deg_lst, g.row_ptrs, g.adj, max_omp_threads);
+        assert(g.row_ptrs[num_vertices] == num_edges);
+#else
+        ConvertEdgeListToCSR(num_edges, edge_lst, num_vertices, deg_lst, g.row_ptrs, g.adj, max_omp_threads);
+        assert(g.row_ptrs[num_vertices] == 2 * num_edges);
+        log_debug("%d, %d", g.row_ptrs[num_vertices], 2 * num_edges);
+#endif
 
         vector<int32_t> new_dict;
         vector<int32_t> old_dict;
-
-        free(edge_lst);
-        auto *tmp_mem_blocks = (int32_t *) malloc(size / 2);
-        auto *org = g.adj;
+        auto *tmp_mem_blocks = reinterpret_cast<int32_t *>(edge_lst);
+#ifdef DODG
         ReorderDegDescendingDODG(g, new_dict, old_dict, tmp_mem_blocks, deg_lst);
-        free(org);
-        log_info("Mem Usage: %s KB", FormatWithCommas(getValue()).c_str());
+#else
+        ReorderDegDescending(g, new_dict, old_dict, tmp_mem_blocks);
+#endif
+        log_info("[%s] Mem: %d KB", __FUNCTION__, getValue());
+        free(tmp_mem_blocks);
+        log_info("[%s] Mem: %d KB", __FUNCTION__, getValue());
+
         // All-Edge Triangle Counting.
         size_t tc_cnt = 0;
+#ifdef DODG
         tc_cnt = CountTriBMPAndMergeWithPackDODG(g, max_omp_threads);
+#else
+        tc_cnt = CountTriBMPAndMergeWithPack(g, max_omp_threads);
+#endif
         log_info("There are %zu triangles in the input graph.", tc_cnt);
         printf("There are %zu triangles in the input graph.\n", tc_cnt);
     }

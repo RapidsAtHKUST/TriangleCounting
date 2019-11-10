@@ -11,6 +11,17 @@ template<typename T>
 void ConvertEdgeListToDODGCSR(uint32_t num_edges, pair<T, T> *edge_lst,
                               uint32_t num_vertices, uint32_t *&deg_lst, uint32_t *&off, int32_t *&adj_lst,
                               int max_omp_threads) {
+    ConvertEdgeListToDODGCSR(num_edges, edge_lst,
+                             num_vertices, deg_lst, off, adj_lst,
+                             max_omp_threads, [](size_t it) {
+                return true;
+            });
+}
+
+template<typename T, typename F>
+void ConvertEdgeListToDODGCSR(uint32_t num_edges, pair<T, T> *edge_lst,
+                              uint32_t num_vertices, uint32_t *&deg_lst, uint32_t *&off, int32_t *&adj_lst,
+                              int max_omp_threads, F f) {
     Timer convert_timer;
     deg_lst = (uint32_t *) (uint32_t *) malloc(sizeof(uint32_t) * (num_vertices + 1));
     auto *dodg_deg_lst = (uint32_t *) (uint32_t *) malloc(sizeof(uint32_t) * (num_vertices + 1));
@@ -25,16 +36,18 @@ void ConvertEdgeListToDODGCSR(uint32_t num_edges, pair<T, T> *edge_lst,
         log_info("[%s]: InitTime: %.9lf s", __FUNCTION__, convert_timer.elapsed());
 
         // Histogram.
-        EdgeListHistogram(num_vertices, num_edges, edge_lst, deg_lst, &convert_timer);
+        EdgeListHistogram(num_vertices, num_edges, edge_lst, deg_lst);
         MemSetOMP(dodg_deg_lst, 0, num_vertices + 1);
 #pragma omp for
         for (uint32_t i = 0u; i < num_edges; i++) {
-            auto src = edge_lst[i].first;
-            auto dst = edge_lst[i].second;
-            if (RankLT(deg_lst[src], deg_lst[dst], src, dst))
-                __sync_fetch_and_add(&dodg_deg_lst[src], 1);
-            else
-                __sync_fetch_and_add(&dodg_deg_lst[dst], 1);
+            if (f(i)) {
+                auto src = edge_lst[i].first;
+                auto dst = edge_lst[i].second;
+                if (RankLT(deg_lst[src], deg_lst[dst], src, dst))
+                    __sync_fetch_and_add(&dodg_deg_lst[src], 1);
+                else
+                    __sync_fetch_and_add(&dodg_deg_lst[dst], 1);
+            }
         }
 
 #pragma omp single
@@ -57,13 +70,15 @@ void ConvertEdgeListToDODGCSR(uint32_t num_edges, pair<T, T> *edge_lst,
         }
 #pragma omp for
         for (uint32_t i = 0; i < num_edges; i++) {
-            auto src = edge_lst[i].first;
-            auto dst = edge_lst[i].second;
-            if (!RankLT(deg_lst[src], deg_lst[dst], src, dst)) {
-                swap(src, dst);
+            if (f(i)) {
+                auto src = edge_lst[i].first;
+                auto dst = edge_lst[i].second;
+                if (!RankLT(deg_lst[src], deg_lst[dst], src, dst)) {
+                    swap(src, dst);
+                }
+                auto old_offset = __sync_fetch_and_add(&(cur_write_off[src]), 1);
+                adj_lst[old_offset] = dst;
             }
-            auto old_offset = __sync_fetch_and_add(&(cur_write_off[src]), 1);
-            adj_lst[old_offset] = dst;
         }
     }
     free(dodg_deg_lst);

@@ -65,26 +65,31 @@ T RemoveDuplicates(pair<T, T> *&edge_lst, I &num_edges, pair<T, T> *&edge_lst_bu
 }
 
 template<typename T, typename D, typename I>
-void EdgeListHistogram(I num_vertices, I num_edges, pair<T, T> *edge_lst, D *deg_lst, Timer *convert_timer = nullptr) {
+void EdgeListHistogram(I num_vertices, I num_edges, pair<T, T> *edge_lst, D *deg_lst) {
+    EdgeListHistogram(num_vertices, num_edges, edge_lst, deg_lst, [](size_t it) {
+        return true;
+    });
+}
+
+template<typename T, typename D, typename I, typename F>
+void EdgeListHistogram(I num_vertices, I num_edges, pair<T, T> *edge_lst, D *deg_lst, F f) {
     auto local_buf = (uint8_t *) calloc(num_vertices, sizeof(uint8_t));
 #pragma omp for
     for (uint32_t i = 0u; i < num_edges; i++) {
-        auto src = edge_lst[i].first;
-        auto dst = edge_lst[i].second;
-        local_buf[src]++;
-        if (local_buf[src] == 0xff) {
-            __sync_fetch_and_add(&deg_lst[src], 0xff);
-            local_buf[src] = 0;
+        if (f(i)) {
+            auto src = edge_lst[i].first;
+            auto dst = edge_lst[i].second;
+            local_buf[src]++;
+            if (local_buf[src] == 0xff) {
+                __sync_fetch_and_add(&deg_lst[src], 0xff);
+                local_buf[src] = 0;
+            }
+            local_buf[dst]++;
+            if (local_buf[dst] == 0xff) {
+                __sync_fetch_and_add(&deg_lst[dst], 0xff);
+                local_buf[dst] = 0;
+            }
         }
-        local_buf[dst]++;
-        if (local_buf[dst] == 0xff) {
-            __sync_fetch_and_add(&deg_lst[dst], 0xff);
-            local_buf[dst] = 0;
-        }
-    }
-    if (convert_timer != nullptr) {
-#pragma omp single
-        log_info("[%s]: Histogram Time: %.9lf s", __FUNCTION__, convert_timer->elapsed());
     }
     for (size_t i = 0; i < num_vertices; i++) {
         // atomic add for edge.first
@@ -109,7 +114,7 @@ void ConvertEdgeListToCSR(uint32_t num_edges, pair<T, T> *edge_lst,
         MemSetOMP(off, 0, num_vertices + 1);
 #pragma omp single
         log_info("[%s]: InitTime: %.9lf s", __FUNCTION__, convert_timer.elapsed());
-        EdgeListHistogram(num_vertices, num_edges, edge_lst, deg_lst, &convert_timer);
+        EdgeListHistogram(num_vertices, num_edges, edge_lst, deg_lst);
 
 #pragma omp single
         log_info("[%s]: Histogram Time: %.9lf s", __FUNCTION__, convert_timer.elapsed());

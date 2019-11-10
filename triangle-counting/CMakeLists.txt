@@ -28,6 +28,9 @@ endif ()
 
 include_directories(.)
 add_executable(test_inplace_sort playground/playground_inplace_sort.cpp util/log.cpp)
+
+add_executable(tc-legacy triangle_counting_main_legacy.cpp util/log.cpp util/search_util.cpp)
+target_compile_definitions(tc-legacy PRIVATE WORKLOAD_STAT=1)
+target_compile_definitions(tc-legacy PRIVATE DODG=1)
+
 add_executable(tc triangle_counting_main.cpp util/log.cpp util/search_util.cpp)
-target_compile_definitions(tc PRIVATE WORKLOAD_STAT=1)
-target_compile_definitions(tc PRIVATE DODG=1)
