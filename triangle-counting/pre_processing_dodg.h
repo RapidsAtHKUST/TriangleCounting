@@ -21,34 +21,11 @@ void ConvertEdgeListToDODGCSR(uint32_t num_edges, pair<T, T> *edge_lst,
     {
         MemSetOMP(deg_lst, 0, num_vertices + 1);
         MemSetOMP(off, 0, num_vertices + 1);
-        auto local_buf = (uint8_t *) calloc(num_vertices, sizeof(uint8_t));
 #pragma omp single
         log_info("[%s]: InitTime: %.9lf s", __FUNCTION__, convert_timer.elapsed());
 
         // Histogram.
-#pragma omp for
-        for (uint32_t i = 0u; i < num_edges; i++) {
-            auto src = edge_lst[i].first;
-            auto dst = edge_lst[i].second;
-            local_buf[src]++;
-            if (local_buf[src] == 0xff) {
-                __sync_fetch_and_add(&deg_lst[src], 0xff);
-                local_buf[src] = 0;
-            }
-            local_buf[dst]++;
-            if (local_buf[dst] == 0xff) {
-                __sync_fetch_and_add(&deg_lst[dst], 0xff);
-                local_buf[dst] = 0;
-            }
-        }
-#pragma omp single
-        log_info("[%s]: Histogram Time: %.9lf s", __FUNCTION__, convert_timer.elapsed());
-        for (size_t i = 0; i < num_vertices; i++) {
-            if (local_buf[i] > 0)
-                __sync_fetch_and_add(&(deg_lst[i]), local_buf[i]);
-        }
-#pragma omp barrier
-
+        EdgeListHistogram(num_vertices, num_edges, edge_lst, deg_lst, &convert_timer);
         MemSetOMP(dodg_deg_lst, 0, num_vertices + 1);
 #pragma omp for
         for (uint32_t i = 0u; i < num_edges; i++) {
@@ -88,7 +65,6 @@ void ConvertEdgeListToDODGCSR(uint32_t num_edges, pair<T, T> *edge_lst,
             auto old_offset = __sync_fetch_and_add(&(cur_write_off[src]), 1);
             adj_lst[old_offset] = dst;
         }
-        free(local_buf);
     }
     free(dodg_deg_lst);
     free(cur_write_off);
