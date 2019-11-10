@@ -1,7 +1,7 @@
-cmake_minimum_required(VERSION 3.6)
+cmake_minimum_required(VERSION 3.5)
 project(tri_cnt)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_VERBOSE_MAKEFILE ON)
 
@@ -26,4 +26,6 @@ else ()
     endif ()
 endif ()
 
+include_directories(.)
+add_executable(test_inplace_sort playground/playground_inplace_sort.cpp util/log.cpp)
 add_executable(tc triangle_counting_main.cpp util/log.cpp util/search_util.cpp)
