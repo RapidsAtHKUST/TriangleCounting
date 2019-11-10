@@ -97,8 +97,11 @@ int main(int argc, char *argv[]) {
 
         // All-Edge Triangle Counting.
         size_t tc_cnt = 0;
+#ifdef DODG
+        tc_cnt = CountTriBMPAndMergeWithPackDODG(g, max_omp_threads);
+#else
         tc_cnt = CountTriBMPAndMergeWithPack(g, max_omp_threads);
-
+#endif
         log_info("There are %zu triangles in the input graph.", tc_cnt);
         printf("There are %zu triangles in the input graph.\n", tc_cnt);
     }
