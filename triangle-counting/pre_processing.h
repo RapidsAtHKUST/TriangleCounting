@@ -140,7 +140,6 @@ void ConvertEdgeListToCSR(uint32_t num_edges, pair<T, T> *edge_lst,
     log_info("[%s]: Total Conversion Time: %.9lf s", __FUNCTION__, convert_timer.elapsed());
 }
 
-
 inline void Reorder(graph_t &g, vector<int32_t> &new_vid_dict, vector<int32_t> &old_vid_dict, int32_t *&new_adj) {
     Timer timer;
 

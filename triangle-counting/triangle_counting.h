@@ -42,6 +42,7 @@ inline size_t CountTriBMPAndMergeWithPack(graph_t &g, int max_omp_threads) {
     auto *row_ptrs_beg = (uint32_t *) malloc(sizeof(uint32_t) * (g.n + 1));
     size_t workload = 0;
     size_t workload_large_deg = 0;
+    size_t workload_bmp = 0;
 
     using word_t = uint64_t;
     constexpr int word_in_bits = sizeof(word_t) * 8;
@@ -56,6 +57,7 @@ inline size_t CountTriBMPAndMergeWithPack(graph_t &g, int max_omp_threads) {
         for (auto u = 0u; u < g.n; u++) {
             row_ptrs_end[u + 1] = static_cast<uint32_t>(
                     lower_bound(g.adj + g.row_ptrs[u], g.adj + g.row_ptrs[u + 1], u) - g.adj);
+//            assert(row_ptrs_end[u + 1] == g.row_ptrs[u + 1]);
             row_ptrs_beg[u] = lower_bound(g.adj + g.row_ptrs[u], g.adj + g.row_ptrs[u + 1],
                                           min<int>(FIRST_RANGE_SIZE, u)) - g.adj;
             max_d = max<int>(max_d, row_ptrs_end[u + 1] - g.row_ptrs[u]);
@@ -69,7 +71,8 @@ inline size_t CountTriBMPAndMergeWithPack(graph_t &g, int max_omp_threads) {
 
         PackWords(g, row_ptrs_beg, to_pack_num, word_indexes, words, tc_timer);
 
-#pragma omp for schedule(dynamic, 100) reduction(+:tc_cnt) reduction(+:workload)  reduction(+:workload_large_deg)
+#pragma omp for schedule(dynamic, 100) reduction(+:tc_cnt) reduction(+:workload)  reduction(+:workload_large_deg) \
+reduction(+:workload_bmp)
         for (auto u = 0u; u < g.n; u++) {
             static thread_local BoolArray<word_t> bitmap(FIRST_RANGE_SIZE);
             static thread_local vector<word_t> buffer(FIRST_RANGE_SIZE / word_in_bits);
@@ -98,6 +101,7 @@ inline size_t CountTriBMPAndMergeWithPack(graph_t &g, int max_omp_threads) {
                         for (size_t i = 0; i < num_words_v; i++) {
 #ifdef WORKLOAD_STAT
                             workload++;
+                            workload_bmp++;
                             workload_large_deg++;
 #endif
                             buffer[i] = bitmap.getWord(word_indexes[v][i]);
@@ -107,6 +111,13 @@ inline size_t CountTriBMPAndMergeWithPack(graph_t &g, int max_omp_threads) {
                         }
                         cn_count += popcnt(&buffer.front(), sizeof(word_t) * num_words_v);
                     } else {
+#ifdef WORKLOAD_STAT
+                        auto dv = row_ptrs_beg[v] - g.row_ptrs[v];
+                        workload += du + dv;
+                        workload_large_deg += du + dv;
+//                        workload += dv;
+//                        workload_large_deg += dv;
+#endif
                         if (g.row_ptrs[v] < row_ptrs_beg[v]) {
                             cn_count += SetInterCntVecMerge(&g, g.row_ptrs[u], row_ptrs_beg[u], g.row_ptrs[v],
                                                             row_ptrs_beg[v]);
@@ -137,8 +148,9 @@ inline size_t CountTriBMPAndMergeWithPack(graph_t &g, int max_omp_threads) {
 #ifdef WORKLOAD_STAT
     log_info("Workload: %s, avg: %s", FormatWithCommas(workload).c_str(),
              FormatWithCommas(workload / (g.m / 2)).c_str());
-    log_info("Workload (large-deg vid in [0, %d]): %s, avg: %s", FIRST_RANGE_SIZE,
+    log_info("Workload (large-deg vid in [0, %d]): %s, BMP: %s, avg: %s", FIRST_RANGE_SIZE,
              FormatWithCommas(workload_large_deg).c_str(),
+             FormatWithCommas(workload_bmp).c_str(),
              FormatWithCommas(workload_large_deg / (g.m / 2)).c_str());
 #endif
     return tc_cnt;

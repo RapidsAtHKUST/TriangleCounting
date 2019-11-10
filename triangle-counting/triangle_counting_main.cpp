@@ -15,6 +15,7 @@
 #include "util/pretty_print.h"
 
 #include "pre_processing.h"
+#include "pre_processing_dodg.h"
 #include "triangle_counting.h"
 
 using namespace std;
@@ -73,15 +74,23 @@ int main(int argc, char *argv[]) {
         log_info("Undirected Graph G = (|V|, |E|): %lld, %lld", g.n, g.m / 2);
 
         g.adj = reinterpret_cast<int32_t *>(edge_lst_buffer);
+#ifdef DODG
+        ConvertEdgeListToDODGCSR(num_edges, edge_lst, num_vertices, deg_lst, g.row_ptrs, g.adj, max_omp_threads);
+        assert(g.row_ptrs[num_vertices] == num_edges);
+#else
         ConvertEdgeListToCSR(num_edges, edge_lst, num_vertices, deg_lst, g.row_ptrs, g.adj, max_omp_threads);
-        log_debug("%d, %d", g.row_ptrs[num_vertices], 2 * num_edges);
         assert(g.row_ptrs[num_vertices] == 2 * num_edges);
+        log_debug("%d, %d", g.row_ptrs[num_vertices], 2 * num_edges);
+#endif
 
         vector<int32_t> new_dict;
         vector<int32_t> old_dict;
         auto *tmp_mem_blocks = reinterpret_cast<int32_t *>(edge_lst);
+#ifdef DODG
+        ReorderDegDescendingDODG(g, new_dict, old_dict, tmp_mem_blocks, deg_lst);
+#else
         ReorderDegDescending(g, new_dict, old_dict, tmp_mem_blocks);
-
+#endif
         log_info("[%s] Mem: %d KB", __FUNCTION__, getValue());
         free(tmp_mem_blocks);
         log_info("[%s] Mem: %d KB", __FUNCTION__, getValue());

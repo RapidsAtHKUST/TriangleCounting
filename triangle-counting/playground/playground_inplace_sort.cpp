@@ -11,6 +11,7 @@
 #include "util/timer.h"
 #include "util/util.h"
 #include "util/log.h"
+#include "primitives.h"
 
 using namespace std;
 using namespace popl;
@@ -23,6 +24,7 @@ int main(int argc, char *argv[]) {
 
     using Edge = pair<int32_t, int32_t>;
     Timer global_timer;
+
     if (string_option->is_set()) {
         size_t size = file_size(string_option->value(0).c_str());
         size_t num_edges = size / sizeof(uint32_t) / 2;
@@ -32,7 +34,6 @@ int main(int argc, char *argv[]) {
         auto file_name = string_option->value(0);
         auto file_fd = open(file_name.c_str(), O_RDONLY, S_IRUSR | S_IWUSR);
         Edge *edge_lst = (Edge *) malloc(size);
-        Edge *edge_lst_buffer = (Edge *) malloc(size);
 #ifndef USE_LOG
         omp_set_num_threads(std::thread::hardware_concurrency());
 #endif
@@ -52,6 +53,7 @@ int main(int argc, char *argv[]) {
         }
         log_info("Load File Time: %.9lfs", global_timer.elapsed());
 
+        // Parallel Sort Globally.
         Timer sort_timer;
         ips4o::parallel::sort(edge_lst, edge_lst + num_edges, [](Edge l, Edge r) {
             if (l.first == r.first) {
@@ -60,7 +62,13 @@ int main(int argc, char *argv[]) {
             return l.first < r.first;
         });
         log_info("Sort Time: %.9lfs", sort_timer.elapsed());
-        // Verification
+
+        // Verification.
+        int32_t max_vid = 0;
+        int32_t num_buckets = 0;
+        uint32_t *deg_histogram = nullptr;
+        uint32_t max_d_dg = 0;
+        uint32_t non_duplicates = 0;
 #pragma omp parallel
         {
             for (size_t i = 0; i < num_edges - 1; i++) {
@@ -73,6 +81,57 @@ int main(int argc, char *argv[]) {
                     assert(l.first < r.first);
                 }
             }
+#pragma omp single
+            log_info("Verification Time: %.9lfs", sort_timer.elapsed());
+#pragma omp for reduction(max: max_vid)
+            for (size_t i = 0; i < num_edges; i++) {
+                max_vid = max(max_vid, max(edge_lst[i].first, edge_lst[i].second));
+            }
+#pragma omp single
+            {
+                num_buckets = max_vid + 1;
+                deg_histogram = (uint32_t *) malloc(sizeof(uint32_t) * num_buckets);
+            }
+            MemSetOMP(deg_histogram, 0, num_buckets);
+
+            // Operator Fusion. (Do not select for the memory saving)
+            auto duplicate_filter = [=](size_t it) {
+                return edge_lst[it].first == edge_lst[it].second || (it > 0 && edge_lst[it - 1] == edge_lst[it]);
+            };
+#pragma omp for reduction(+:non_duplicates)
+            for (size_t i = 0; i < num_edges; i++) {
+                if (!duplicate_filter(i)) {
+                    non_duplicates++;
+                    __sync_fetch_and_add(deg_histogram + edge_lst[i].first, 1);
+                    __sync_fetch_and_add(deg_histogram + edge_lst[i].second, 1);
+                }
+            }
+#pragma omp for reduction(max:max_d_dg)
+            for (size_t i = 0; i < num_buckets; i++) {
+                max_d_dg = max(max_d_dg, deg_histogram[i]);
+            }
+        }
+
+        // Deg-Descending Dictionary.
+        log_info("max-d: %d", max_d_dg);
+        log_info("Use parallel sort (parasort)");
+        auto old_vid_dict = vector<int32_t>(num_buckets);
+#pragma omp parallel for
+        for (auto i = 0; i < num_buckets; i++) {
+            old_vid_dict[i] = i;
+        }
+        ips4o::parallel::sort(begin(old_vid_dict), end(old_vid_dict),
+                              [deg_histogram](int l, int r) -> bool {
+                                  return deg_histogram[l] > deg_histogram[r];
+                              },
+                              omp_get_max_threads());
+        size_t num_large_deg_edges = 0;
+        for (size_t i = 0; i < 32768; i++) {
+            num_large_deg_edges += deg_histogram[old_vid_dict[i]];
+            if (i % 16 == 15)
+                log_info("%d, Large Deg Edges: %zu/%zu/%zu, Ratio: %.3lf", i,
+                         num_large_deg_edges, non_duplicates, num_edges,
+                         static_cast<double>(num_large_deg_edges) / non_duplicates);
         }
     }
 }
