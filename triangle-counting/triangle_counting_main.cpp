@@ -98,6 +98,23 @@ int main(int argc, char *argv[]) {
             }
             return l.first < r.first;
         });
+
+#pragma omp parallel
+        {
+#pragma omp for
+            for (size_t i = 0; i < num_edges - 1; i++) {
+                auto l = edge_lst[i];
+                auto r = edge_lst[i + 1];
+                if (l.first == r.first) {
+                    // = because of duplicates: self-loop-edge and multi-edge
+                    assert(l.second <= r.second);
+                } else {
+                    assert(l.first < r.first);
+                }
+            }
+#pragma omp single
+            log_info("Verification Time: %.9lfs", sort_timer.elapsed());
+        };
         log_info("Sort Time: %.9lfs", sort_timer.elapsed());
         auto num_vertices = static_cast<uint32_t >(max_node_id) + 1;
         log_info("Pre-Process Edge List Time: %.9lf s", global_timer.elapsed());
