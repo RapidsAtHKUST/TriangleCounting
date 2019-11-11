@@ -6,6 +6,7 @@
 #include <cassert>
 
 #include <omp.h>
+#include <malloc.h>
 
 #include "ips4o/ips4o.hpp"
 
@@ -24,6 +25,10 @@ using namespace std;
 using namespace popl;
 using namespace std::chrono;
 
+//#define MMAP
+#define PAGE_SIZE (4096)
+#define IO_REQ_SIZE (PAGE_SIZE * 32)
+#define IO_QUEUE_DEPTH (16)
 
 int main(int argc, char *argv[]) {
     OptionParser op("Allowed options");
@@ -39,37 +44,54 @@ int main(int argc, char *argv[]) {
         log_info("#of Edges: %zu", num_edges);
 
         auto file_name = string_option->value(0);
+#ifndef MMAP
+        auto file_fd = open(file_name.c_str(), O_RDONLY | O_DIRECT, S_IRUSR | S_IWUSR);
+        Edge *edge_lst = (Edge *) memalign(PAGE_SIZE, size+IO_REQ_SIZE);
+#else
         auto file_fd = open(file_name.c_str(), O_RDONLY, S_IRUSR | S_IWUSR);
-        Edge *edge_lst = (Edge *) malloc(size);
+        Edge *edge_lst = (Edge *) mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE, file_fd, 0);
+        madvise(edge_lst, size, MADV_SEQUENTIAL);
+#endif
 #ifndef USE_LOG
         omp_set_num_threads(std::thread::hardware_concurrency());
 #endif
         auto max_omp_threads = omp_get_max_threads();
-#pragma omp parallel num_threads(max_omp_threads)
+#ifndef MMAP
+        Timer io_timer;
+        size_t read_size = 0;
+#pragma omp parallel num_threads(IO_QUEUE_DEPTH)
         {
-            auto tid = omp_get_thread_num();
+#pragma omp for schedule(dynamic, 1) reduction(+:read_size)
+            for (size_t i = 0; i < size; i += IO_REQ_SIZE) {
+                auto it_beg = i;
+                auto *chars = reinterpret_cast<uint8_t *>(edge_lst);
+                auto ret = pread(file_fd, chars + it_beg, IO_REQ_SIZE, it_beg);
+                if (ret != IO_REQ_SIZE) {
+                    log_error("Err, %zu, %zu, %zu, %d", i, it_beg, IO_REQ_SIZE, ret);
+                }else{
+                    read_size += ret;
+                }
+            }
 #pragma omp single
-            log_info("Populate Mem Time: %.9lfs", global_timer.elapsed());
-
-            size_t task_num = size;
-            size_t avg = (task_num + max_omp_threads - 1) / max_omp_threads;
-            auto it_beg = avg * tid;
-            auto it_end = min(avg * (tid + 1), task_num);
-            auto *chars = reinterpret_cast<uint8_t *>(edge_lst);
-            pread(file_fd, chars + it_beg, it_end - it_beg, it_beg);
+            log_info("%zu, %zu", read_size, size);
         }
+        log_info("IO Time: %.6lfs, DIO-QPS: %.6lf GB/s", io_timer.elapsed(), size / io_timer.elapsed() / pow(1024, 3));
+#else
+        mlock(edge_lst, size);
+#endif
         log_info("Load File Time: %.9lfs", global_timer.elapsed());
-
         // 1st: Remove Multi-Edges and Self-Loops.
         Timer sort_timer;
         int32_t max_node_id = 0;
-#pragma omp parallel for reduction(max: max_node_id)
+#pragma omp parallel for reduction(max: max_node_id) schedule(dynamic, 32*1024)
         for (size_t i = 0u; i < num_edges; i++) {
             if (edge_lst[i].first > edge_lst[i].second) {
                 swap(edge_lst[i].first, edge_lst[i].second);
             }
             max_node_id = max(max_node_id, max(edge_lst[i].first, edge_lst[i].second));
         }
+        log_info("Populate File Time: %.9lfs", global_timer.elapsed());
+
         ips4o::parallel::sort(edge_lst, edge_lst + num_edges, [](Edge l, Edge r) {
             if (l.first == r.first) {
                 return l.second < r.second;
@@ -85,6 +107,10 @@ int main(int argc, char *argv[]) {
                 .adj=nullptr, .row_ptrs=nullptr};
         uint32_t *deg_lst;
         g.adj = (int32_t *) malloc(size / 2);
+
+#ifdef MMAP
+        munlock(edge_lst, size);
+#endif
         ConvertEdgeListToDODGCSR(num_edges, edge_lst, num_vertices, deg_lst, g.row_ptrs, g.adj,
                                  max_omp_threads, [=](size_t it) {
                     return !(edge_lst[it].first == edge_lst[it].second
@@ -98,7 +124,11 @@ int main(int argc, char *argv[]) {
         // 3rd: Reordering.
         vector<int32_t> new_dict;
         vector<int32_t> old_dict;
+#ifndef MMAP
         free(edge_lst);
+#else
+        munmap(edge_lst, size);
+#endif
         auto *tmp_mem_blocks = (int32_t *) malloc(size / 2);
         auto *org = g.adj;
         ReorderDegDescendingDODG(g, new_dict, old_dict, tmp_mem_blocks, deg_lst);
