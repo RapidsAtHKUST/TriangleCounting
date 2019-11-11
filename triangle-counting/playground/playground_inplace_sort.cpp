@@ -71,6 +71,7 @@ int main(int argc, char *argv[]) {
         uint32_t non_duplicates = 0;
 #pragma omp parallel
         {
+#pragma omp for
             for (size_t i = 0; i < num_edges - 1; i++) {
                 auto l = edge_lst[i];
                 auto r = edge_lst[i + 1];
@@ -95,8 +96,9 @@ int main(int argc, char *argv[]) {
             MemSetOMP(deg_histogram, 0, num_buckets);
 
             // Operator Fusion. (Do not select for the memory saving)
-            auto duplicate_filter = [=](size_t it) {
-                return edge_lst[it].first == edge_lst[it].second || (it > 0 && edge_lst[it - 1] == edge_lst[it]);
+            auto duplicate_filter = [edge_lst](size_t it) {
+                return edge_lst[it].first == edge_lst[it].second
+                       || (it > 0 && edge_lst[it - 1] == edge_lst[it]);
             };
 #pragma omp for reduction(+:non_duplicates)
             for (size_t i = 0; i < num_edges; i++) {
@@ -128,7 +130,7 @@ int main(int argc, char *argv[]) {
         size_t num_large_deg_edges = 0;
         for (size_t i = 0; i < 32768; i++) {
             num_large_deg_edges += deg_histogram[old_vid_dict[i]];
-            if (i % 16 == 15)
+            if (i % 1024 == 1024 - 1)
                 log_info("%d, Large Deg Edges: %zu/%zu/%zu, Ratio: %.3lf", i,
                          num_large_deg_edges, non_duplicates, num_edges,
                          static_cast<double>(num_large_deg_edges) / non_duplicates);

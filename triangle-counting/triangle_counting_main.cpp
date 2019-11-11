@@ -60,8 +60,16 @@ int main(int argc, char *argv[]) {
         }
         log_info("Load File Time: %.9lfs", global_timer.elapsed());
 
-        // Remove Multi-Edges and Self-Loops.
+        // 1st: Remove Multi-Edges and Self-Loops.
         Timer sort_timer;
+        int32_t max_node_id = 0;
+#pragma omp parallel for reduction(max: max_node_id)
+        for (size_t i = 0u; i < num_edges; i++) {
+            if (edge_lst[i].first > edge_lst[i].second) {
+                swap(edge_lst[i].first, edge_lst[i].second);
+            }
+            max_node_id = max(max_node_id, max(edge_lst[i].first, edge_lst[i].second));
+        }
         ips4o::parallel::sort(edge_lst, edge_lst + num_edges, [](Edge l, Edge r) {
             if (l.first == r.first) {
                 return l.second < r.second;
@@ -69,19 +77,10 @@ int main(int argc, char *argv[]) {
             return l.first < r.first;
         });
         log_info("Sort Time: %.9lfs", sort_timer.elapsed());
-
-        int32_t max_node_id = 0;
-#pragma omp parallel
-        {
-#pragma omp for reduction(max: max_node_id)
-            for (size_t i = 0; i < num_edges; i++) {
-                max_node_id = max(max_node_id, max(edge_lst[i].first, edge_lst[i].second));
-            }
-        }
         auto num_vertices = static_cast<uint32_t >(max_node_id) + 1;
-        log_info("Load Edge List Time: %.9lf s", global_timer.elapsed());
+        log_info("Pre-Process Edge List Time: %.9lf s", global_timer.elapsed());
 
-        // Convert Edge List to CSR.
+        // 2nd: Convert Edge List to CSR.
         graph_t g{.n=num_vertices, .m = 0,
                 .adj=nullptr, .row_ptrs=nullptr};
         uint32_t *deg_lst;
@@ -94,19 +93,22 @@ int main(int argc, char *argv[]) {
         assert(g.row_ptrs[num_vertices] <= num_edges);
         g.m = g.row_ptrs[num_vertices];
         log_info("Undirected Graph G = (|V|, |E|): %lld, %lld", g.n, g.m);
+        log_info("Mem Usage: %s KB", FormatWithCommas(getValue()).c_str());
 
+        // 3rd: Reordering.
         vector<int32_t> new_dict;
         vector<int32_t> old_dict;
-
         free(edge_lst);
         auto *tmp_mem_blocks = (int32_t *) malloc(size / 2);
         auto *org = g.adj;
         ReorderDegDescendingDODG(g, new_dict, old_dict, tmp_mem_blocks, deg_lst);
         free(org);
+
+        // 4th: Triangle Counting.
         log_info("Mem Usage: %s KB", FormatWithCommas(getValue()).c_str());
-        // All-Edge Triangle Counting.
         size_t tc_cnt = 0;
         tc_cnt = CountTriBMPAndMergeWithPackDODG(g, max_omp_threads);
+        log_info("Mem Usage: %s KB", FormatWithCommas(getValue()).c_str());
         log_info("There are %zu triangles in the input graph.", tc_cnt);
         printf("There are %zu triangles in the input graph.\n", tc_cnt);
     }

@@ -36,7 +36,7 @@ void ConvertEdgeListToDODGCSR(uint32_t num_edges, pair<T, T> *edge_lst,
         log_info("[%s]: InitTime: %.9lf s", __FUNCTION__, convert_timer.elapsed());
 
         // Histogram.
-        EdgeListHistogram(num_vertices, num_edges, edge_lst, deg_lst);
+        EdgeListHistogram(num_vertices, num_edges, edge_lst, deg_lst, f);
         MemSetOMP(dodg_deg_lst, 0, num_vertices + 1);
 #pragma omp for
         for (uint32_t i = 0u; i < num_edges; i++) {
