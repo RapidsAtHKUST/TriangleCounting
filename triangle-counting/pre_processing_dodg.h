@@ -16,7 +16,7 @@ void ConvertEdgeListToDODGCSR(OFF num_edges, pair<T, T> *edge_lst,
     auto *dodg_deg_lst = (uint32_t *) malloc(sizeof(uint32_t) * (num_vertices + 1));
     off = (OFF *) malloc(sizeof(OFF) * (num_vertices + 1));
     auto cur_write_off = (OFF *) malloc(sizeof(OFF) * (num_vertices + 1));
-    vector<uint32_t> histogram;
+    vector<row_ptr_t> histogram;
 #pragma omp parallel num_threads(max_omp_threads)
     {
         MemSetOMP(deg_lst, 0, num_vertices + 1);
@@ -46,6 +46,11 @@ void ConvertEdgeListToDODGCSR(OFF num_edges, pair<T, T> *edge_lst,
         InclusivePrefixSumOMP(histogram, off + 1, num_vertices, [&dodg_deg_lst](uint32_t it) {
             return dodg_deg_lst[it];
         });
+#pragma omp single
+        {
+            log_debug("%zu", off[num_vertices]);
+            assert(off[num_vertices] <= num_edges);
+        }
         MemCpyOMP(cur_write_off, off, num_vertices + 1);
 
         // Scatter.

@@ -1,6 +1,3 @@
-//
-// Created by yche on 10/10/19.
-//
 
 #include <chrono>
 #include <cassert>
@@ -44,19 +41,14 @@ int main(int argc, char *argv[]) {
         log_info("#of Edges: %zu", num_edges);
 
         auto file_name = string_option->value(0);
-#ifndef MMAP
         auto file_fd = open(file_name.c_str(), O_RDONLY | O_DIRECT, S_IRUSR | S_IWUSR);
         Edge *edge_lst = (Edge *) memalign(PAGE_SIZE, size + IO_REQ_SIZE);
-#else
-        auto file_fd = open(file_name.c_str(), O_RDONLY, S_IRUSR | S_IWUSR);
-        Edge *edge_lst = (Edge *) mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE, file_fd, 0);
-        madvise(edge_lst, size, MADV_SEQUENTIAL);
-#endif
+
 #ifndef USE_LOG
         omp_set_num_threads(std::thread::hardware_concurrency());
 #endif
         auto max_omp_threads = omp_get_max_threads();
-#ifndef MMAP
+
         Timer io_timer;
         size_t read_size = 0;
 #pragma omp parallel num_threads(IO_QUEUE_DEPTH)
@@ -76,10 +68,8 @@ int main(int argc, char *argv[]) {
             log_info("%zu, %zu", read_size, size);
         }
         log_info("IO Time: %.6lfs, DIO-QPS: %.6lf GB/s", io_timer.elapsed(), size / io_timer.elapsed() / pow(1024, 3));
-#else
-        mlock(edge_lst, size);
-#endif
         log_info("Load File Time: %.9lfs", global_timer.elapsed());
+
         // 1st: Remove Multi-Edges and Self-Loops.
         Timer sort_timer;
         int32_t max_node_id = 0;
@@ -98,36 +88,6 @@ int main(int argc, char *argv[]) {
             }
             return l.first < r.first;
         });
-
-#ifdef VERIFY_PROCESSED_EDGE_LST
-        size_t gt_num_edges = 0;
-#pragma omp parallel
-        {
-#pragma omp for reduction(+:gt_num_edges)
-            for (size_t it = 0; it < num_edges; it++) {
-                if (edge_lst[it].first == edge_lst[it].second || (it > 0 && edge_lst[it - 1] == edge_lst[it]))
-                    continue;
-                gt_num_edges++;
-            }
-#pragma omp single
-            {
-                log_info("Remove Duplicates: %zu", gt_num_edges);
-            }
-#pragma omp for
-            for (size_t i = 0; i < num_edges - 1; i++) {
-                auto l = edge_lst[i];
-                auto r = edge_lst[i + 1];
-                if (l.first == r.first) {
-                    // = because of duplicates: self-loop-edge and multi-edge
-                    assert(l.second <= r.second);
-                } else {
-                    assert(l.first < r.first);
-                }
-            }
-#pragma omp single
-            log_info("Verification Time: %.9lfs", sort_timer.elapsed());
-        }
-#endif
         log_info("Sort Time: %.9lfs", sort_timer.elapsed());
         auto num_vertices = static_cast<uint32_t >(max_node_id) + 1;
         log_info("Pre-Process Edge List Time: %.9lf s", global_timer.elapsed());
@@ -137,14 +97,12 @@ int main(int argc, char *argv[]) {
         uint32_t *deg_lst;
         g.adj = (int32_t *) malloc(size / 2);
 
-#ifdef MMAP
-        munlock(edge_lst, size);
-#endif
         ConvertEdgeListToDODGCSR(num_edges, edge_lst, num_vertices, deg_lst, g.row_ptrs, g.adj,
                                  max_omp_threads, [=](size_t it) {
                     return !(edge_lst[it].first == edge_lst[it].second
                              || (it > 0 && edge_lst[it - 1] == edge_lst[it]));
                 });
+        free(deg_lst);
         assert(g.row_ptrs[num_vertices] <= num_edges);
         g.m = g.row_ptrs[num_vertices];
         log_info("Undirected Graph G = (|V|, |E|): %lld, %lld", g.n, g.m);
@@ -153,11 +111,8 @@ int main(int argc, char *argv[]) {
         // 3rd: Reordering.
         vector<int32_t> new_dict;
         vector<int32_t> old_dict;
-#ifndef MMAP
         free(edge_lst);
-#else
-        munmap(edge_lst, size);
-#endif
+
         auto *tmp_mem_blocks = (int32_t *) malloc(size / 2);
         auto *org = g.adj;
         ReorderDegDescendingDODG(g, new_dict, old_dict, tmp_mem_blocks, deg_lst);

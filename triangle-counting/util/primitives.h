@@ -60,7 +60,7 @@ void InclusivePrefixSumOMP(vector<H> &histogram, T *output, size_t size, F f) {
     auto histogram_idx = (tid + 1) * CACHE_LINE_ENTRY;
     histogram[histogram_idx] = 0;
     auto it_end = tid == omp_num_threads - 1 ? size : avg * (tid + 1);
-    auto prev = 0u;
+    size_t prev = 0u;
     for (auto it = it_beg; it < it_end; it++) {
         auto value = f(it);
         histogram[histogram_idx] += value;

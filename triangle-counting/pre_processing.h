@@ -28,6 +28,7 @@ void EdgeListHistogram(I num_vertices, OFF num_edges, pair<T, T> *edge_lst, D *d
         if (local_buf[i] > 0)
             __sync_fetch_and_add(&(deg_lst[i]), local_buf[i]);
     }
+    free(local_buf);
 #pragma omp barrier
 }
 
@@ -39,7 +40,7 @@ inline void Reorder(graph_t &g, vector<int32_t> &new_vid_dict, vector<int32_t> &
     new_off[0] = 0;
 
     auto max_omp_threads = omp_get_max_threads();
-    auto histogram = vector<uint32_t>((max_omp_threads + 1) * CACHE_LINE_ENTRY, 0);
+    auto histogram = vector<row_ptr_t>((max_omp_threads + 1) * CACHE_LINE_ENTRY, 0);
 
 #pragma omp parallel num_threads(max_omp_threads)
     {

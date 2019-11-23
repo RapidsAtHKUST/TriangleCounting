@@ -36,3 +36,5 @@ target_compile_definitions(tc-mmap PRIVATE MMAP=1)
 ### End of Experimental
 
 add_executable(tc triangle_counting_main.cpp util/log.cpp)
+
+add_executable(tc_baseline triangle_counting_main_baseline.cpp util/log.cpp)

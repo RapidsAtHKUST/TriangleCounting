@@ -34,6 +34,34 @@ void PackWords(graph_t &g, OFF *row_ptrs_beg, int to_pack_num, vector<vector<WI>
     }
 }
 
+inline size_t CountTriMergeDODG(graph_t &g, int max_omp_threads) {
+    Timer tc_timer;
+    int max_d = 0;
+    size_t tc_cnt = 0;
+
+#pragma omp parallel num_threads(max_omp_threads)
+    {
+#pragma omp for reduction(max: max_d)
+        for (auto u = 0u; u < g.n; u++) {
+            max_d = max<int>(max_d, g.row_ptrs[u + 1] - g.row_ptrs[u]);
+        }
+#pragma omp single
+        {
+            log_info("finish init row_ptrs_end, max d: %d, time: %.9lfs", max_d, tc_timer.elapsed());
+        }
+#pragma omp for schedule(dynamic, 100) reduction(+:tc_cnt)
+        for (auto u = 0u; u < g.n; u++) {
+            //  Index for First Range.
+            for (auto edge_idx = g.row_ptrs[u]; edge_idx < g.row_ptrs[u + 1]; edge_idx++) {
+                auto v = g.adj[edge_idx];
+                tc_cnt += SetInterCntVecMerge(&g, g.row_ptrs[u], g.row_ptrs[u + 1],
+                                              g.row_ptrs[v], g.row_ptrs[v + 1]);
+            }
+        }
+    }
+    return tc_cnt;
+}
+
 inline size_t CountTriBMPAndMergeWithPackDODG(graph_t &g, int max_omp_threads) {
     Timer tc_timer;
     int max_d = 0;
@@ -60,8 +88,10 @@ inline size_t CountTriBMPAndMergeWithPackDODG(graph_t &g, int max_omp_threads) {
         }
 #pragma omp single
         {
-            log_info("Stop Deg at [%d, %d]", g.row_ptrs[1] - g.row_ptrs[0],
-                     g.row_ptrs[to_pack_num] - g.row_ptrs[to_pack_num - 1]);
+            if (to_pack_num > 0) {
+                log_info("Stop Deg at [%d, %d]", g.row_ptrs[1] - g.row_ptrs[0],
+                         g.row_ptrs[to_pack_num] - g.row_ptrs[to_pack_num - 1]);
+            }
             log_info("finish init row_ptrs_end, max d: %d, time: %.9lfs", max_d, tc_timer.elapsed());
         }
 
