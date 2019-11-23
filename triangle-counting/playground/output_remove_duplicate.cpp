@@ -12,7 +12,7 @@
 #include "util/timer.h"
 #include "util/util.h"
 #include "util/log.h"
-#include "primitives.h"
+#include "util/primitives.h"
 #include "yche_serialization.h"
 
 using namespace std;

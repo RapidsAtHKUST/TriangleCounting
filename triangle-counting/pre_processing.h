@@ -1,6 +1,6 @@
 #pragma once
 
-#include "primitives.h"
+#include "util/primitives.h"
 #include "graph.h"
 
 template<typename T, typename I>

@@ -1,10 +1,10 @@
 CXX = g++
 RM = rm
-CXXFLAGS = -O3 -fopenmp -lpthread -std=c++11 -march=native
+CXXFLAGS = -O3 -fopenmp -lpthread -std=c++14 -march=native
 
 .PHONY: clean
 
-tc: log.o search_util.o triangle_counting_main_legacy.cpp
+tc: log.o search_util.o triangle_counting_main.cpp
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 search_util.o: util/search_util.cpp

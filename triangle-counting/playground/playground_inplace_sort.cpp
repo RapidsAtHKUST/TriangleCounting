@@ -11,7 +11,7 @@
 #include "util/timer.h"
 #include "util/util.h"
 #include "util/log.h"
-#include "primitives.h"
+#include "util/primitives.h"
 
 using namespace std;
 using namespace popl;
