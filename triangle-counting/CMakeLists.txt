@@ -31,8 +31,8 @@ add_executable(test_inplace_sort playground/playground_inplace_sort.cpp util/log
 add_executable(remove_duplicate playground/output_remove_duplicate.cpp util/log.cpp)
 
 ### Experimental
-add_executable(tc-mmap triangle_counting_main.cpp util/log.cpp util/search_util.cpp)
+add_executable(tc-mmap triangle_counting_main.cpp util/log.cpp)
 target_compile_definitions(tc-mmap PRIVATE MMAP=1)
 ### End of Experimental
 
-add_executable(tc triangle_counting_main.cpp util/log.cpp util/search_util.cpp)
+add_executable(tc triangle_counting_main.cpp util/log.cpp)

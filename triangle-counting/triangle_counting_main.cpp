@@ -46,7 +46,7 @@ int main(int argc, char *argv[]) {
         auto file_name = string_option->value(0);
 #ifndef MMAP
         auto file_fd = open(file_name.c_str(), O_RDONLY | O_DIRECT, S_IRUSR | S_IWUSR);
-        Edge *edge_lst = (Edge *) memalign(PAGE_SIZE, size+IO_REQ_SIZE);
+        Edge *edge_lst = (Edge *) memalign(PAGE_SIZE, size + IO_REQ_SIZE);
 #else
         auto file_fd = open(file_name.c_str(), O_RDONLY, S_IRUSR | S_IWUSR);
         Edge *edge_lst = (Edge *) mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE, file_fd, 0);
@@ -68,7 +68,7 @@ int main(int argc, char *argv[]) {
                 auto ret = pread(file_fd, chars + it_beg, IO_REQ_SIZE, it_beg);
                 if (ret != IO_REQ_SIZE) {
                     log_error("Err, %zu, %zu, %zu, %d", i, it_beg, IO_REQ_SIZE, ret);
-                }else{
+                } else {
                     read_size += ret;
                 }
             }
@@ -99,8 +99,19 @@ int main(int argc, char *argv[]) {
             return l.first < r.first;
         });
 
+        size_t gt_num_edges = 0;
 #pragma omp parallel
         {
+#pragma omp for reduction(+:gt_num_edges)
+            for (size_t it = 0; it < num_edges; it++) {
+                if (edge_lst[it].first == edge_lst[it].second || (it > 0 && edge_lst[it - 1] == edge_lst[it]))
+                    continue;
+                gt_num_edges++;
+            }
+#pragma omp single
+            {
+                log_info("Remove Duplicates: %zu", gt_num_edges);
+            }
 #pragma omp for
             for (size_t i = 0; i < num_edges - 1; i++) {
                 auto l = edge_lst[i];

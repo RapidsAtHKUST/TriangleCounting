@@ -7,15 +7,15 @@ bool RankLT(int du, int dv, int u, int v) {
     return du < dv || ((du == dv) && (u < v));
 }
 
-template<typename T, typename F>
-void ConvertEdgeListToDODGCSR(uint32_t num_edges, pair<T, T> *edge_lst,
-                              uint32_t num_vertices, uint32_t *&deg_lst, uint32_t *&off, int32_t *&adj_lst,
+template<typename T, typename F, typename OFF>
+void ConvertEdgeListToDODGCSR(OFF num_edges, pair<T, T> *edge_lst,
+                              uint32_t num_vertices, uint32_t *&deg_lst, OFF *&off, int32_t *&adj_lst,
                               int max_omp_threads, F f) {
     Timer convert_timer;
-    deg_lst = (uint32_t *) (uint32_t *) malloc(sizeof(uint32_t) * (num_vertices + 1));
-    auto *dodg_deg_lst = (uint32_t *) (uint32_t *) malloc(sizeof(uint32_t) * (num_vertices + 1));
-    off = (uint32_t *) (uint32_t *) malloc(sizeof(uint32_t) * (num_vertices + 1));
-    auto cur_write_off = (uint32_t *) malloc(sizeof(uint32_t) * (num_vertices + 1));
+    deg_lst = (uint32_t *) malloc(sizeof(uint32_t) * (num_vertices + 1));
+    auto *dodg_deg_lst = (uint32_t *) malloc(sizeof(uint32_t) * (num_vertices + 1));
+    off = (OFF *) malloc(sizeof(OFF) * (num_vertices + 1));
+    auto cur_write_off = (OFF *) malloc(sizeof(OFF) * (num_vertices + 1));
     vector<uint32_t> histogram;
 #pragma omp parallel num_threads(max_omp_threads)
     {
@@ -28,7 +28,7 @@ void ConvertEdgeListToDODGCSR(uint32_t num_edges, pair<T, T> *edge_lst,
         EdgeListHistogram(num_vertices, num_edges, edge_lst, deg_lst, f);
         MemSetOMP(dodg_deg_lst, 0, num_vertices + 1);
 #pragma omp for
-        for (uint32_t i = 0u; i < num_edges; i++) {
+        for (size_t i = 0u; i < num_edges; i++) {
             if (f(i)) {
                 auto src = edge_lst[i].first;
                 auto dst = edge_lst[i].second;
@@ -58,7 +58,7 @@ void ConvertEdgeListToDODGCSR(uint32_t num_edges, pair<T, T> *edge_lst,
             log_info("[%s]: PrefixSum Time: %.9lf s", __FUNCTION__, convert_timer.elapsed());
         }
 #pragma omp for
-        for (uint32_t i = 0; i < num_edges; i++) {
+        for (size_t i = 0; i < num_edges; i++) {
             if (f(i)) {
                 auto src = edge_lst[i].first;
                 auto dst = edge_lst[i].second;

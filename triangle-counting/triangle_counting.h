@@ -1,7 +1,7 @@
 #pragma once
 
 #include "util/boolarray.h"
-#include "graph.h"
+#include "util/graph.h"
 #include "util/libpopcnt.h"
 #include "util/set_inter_cnt_utils.h"
 
@@ -38,7 +38,7 @@ inline size_t CountTriBMPAndMergeWithPackDODG(graph_t &g, int max_omp_threads) {
     Timer tc_timer;
     int max_d = 0;
     size_t tc_cnt = 0;
-    auto *row_ptrs_beg = (uint32_t *) malloc(sizeof(uint32_t) * (g.n + 1));
+    auto *row_ptrs_beg = (row_ptr_t *) malloc(sizeof(row_ptr_t) * (g.n + 1));
     size_t workload = 0;
     size_t workload_large_deg = 0;
     size_t workload_bmp = 0;

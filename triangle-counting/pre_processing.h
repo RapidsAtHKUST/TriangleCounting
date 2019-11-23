@@ -1,13 +1,13 @@
 #pragma once
 
 #include "util/primitives.h"
-#include "graph.h"
+#include "util/graph.h"
 
-template<typename T, typename D, typename I, typename F>
-void EdgeListHistogram(I num_vertices, I num_edges, pair<T, T> *edge_lst, D *deg_lst, F f) {
+template<typename T, typename D, typename I, typename OFF, typename F>
+void EdgeListHistogram(I num_vertices, OFF num_edges, pair<T, T> *edge_lst, D *deg_lst, F f) {
     auto local_buf = (uint8_t *) calloc(num_vertices, sizeof(uint8_t));
 #pragma omp for
-    for (uint32_t i = 0u; i < num_edges; i++) {
+    for (size_t i = 0u; i < num_edges; i++) {
         if (f(i)) {
             auto src = edge_lst[i].first;
             auto dst = edge_lst[i].second;
@@ -23,7 +23,7 @@ void EdgeListHistogram(I num_vertices, I num_edges, pair<T, T> *edge_lst, D *deg
             }
         }
     }
-    for (size_t i = 0; i < num_vertices; i++) {
+    for (size_t i = 0u; i < num_vertices; i++) {
         // atomic add for edge.first
         if (local_buf[i] > 0)
             __sync_fetch_and_add(&(deg_lst[i]), local_buf[i]);
@@ -35,7 +35,7 @@ inline void Reorder(graph_t &g, vector<int32_t> &new_vid_dict, vector<int32_t> &
     Timer timer;
 
     new_vid_dict = vector<int32_t>(g.n);
-    vector<uint32_t> new_off(g.n + 1);
+    vector<row_ptr_t> new_off(g.n + 1);
     new_off[0] = 0;
 
     auto max_omp_threads = omp_get_max_threads();

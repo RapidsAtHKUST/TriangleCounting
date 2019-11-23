@@ -2,12 +2,14 @@
 
 #include <cstdint>
 
+using row_ptr_t = uint64_t;
+
 struct graph_t {
     long n;
     long m;
 
     int32_t *adj;
-    uint32_t *row_ptrs;
+    row_ptr_t *row_ptrs;
 };
 
 
