@@ -67,9 +67,7 @@ inline size_t CountTriBMPAndMergeWithPackDODG(graph_t &g, int max_omp_threads) {
     int max_d = 0;
     size_t tc_cnt = 0;
     auto *row_ptrs_beg = (row_ptr_t *) malloc(sizeof(row_ptr_t) * (g.n + 1));
-    size_t workload = 0;
-    size_t workload_large_deg = 0;
-    size_t workload_bmp = 0;
+
     auto *row_ptrs_end = g.row_ptrs;
     using word_t = uint64_t;
     constexpr int word_in_bits = sizeof(word_t) * 8;
@@ -97,8 +95,7 @@ inline size_t CountTriBMPAndMergeWithPackDODG(graph_t &g, int max_omp_threads) {
 
         PackWords(g, row_ptrs_beg, to_pack_num, word_indexes, words, tc_timer);
 
-#pragma omp for schedule(dynamic, 100) reduction(+:tc_cnt) reduction(+:workload)  reduction(+:workload_large_deg) \
-reduction(+:workload_bmp)
+#pragma omp for schedule(dynamic, 100) reduction(+:tc_cnt)
         for (auto u = 0u; u < g.n; u++) {
             static thread_local BoolArray<word_t> bitmap(FIRST_RANGE_SIZE);
             static thread_local vector<word_t> buffer(FIRST_RANGE_SIZE / word_in_bits);
@@ -143,7 +140,7 @@ reduction(+:workload_bmp)
                         workload_large_deg += du + dv;
 #endif
                         if (g.row_ptrs[v] < row_ptrs_beg[v]) {
-                            cn_count += SetInterCntVecMerge(&g, g.row_ptrs[u], row_ptrs_beg[u], g.row_ptrs[v],
+                            cn_count += SetIntersectionScalarCntDetail(&g, g.row_ptrs[u], row_ptrs_beg[u], g.row_ptrs[v],
                                                             row_ptrs_beg[v]);
                         }
                     }
@@ -155,7 +152,7 @@ reduction(+:workload_bmp)
 #ifdef WORKLOAD_STAT
                     workload += du + dv;
 #endif
-                    cn_count += SetInterCntVecMerge(&g, row_ptrs_beg[u], row_ptrs_end[u + 1],
+                    cn_count += SetIntersectionScalarCntDetail(&g, row_ptrs_beg[u], row_ptrs_end[u + 1],
                                                     row_ptrs_beg[v], row_ptrs_end[v + 1]);
                 }
                 tc_cnt += cn_count;
@@ -170,14 +167,6 @@ reduction(+:workload_bmp)
     free(row_ptrs_beg);
     log_info("Forward cost: %.3lf s, Mem Usage: %d KB", tc_timer.elapsed(), getValue());
     log_info("Triangle Cnt: %'zu", tc_cnt);
-#ifdef WORKLOAD_STAT
-    log_info("Workload: %s, avg: %s", FormatWithCommas(workload).c_str(),
-             FormatWithCommas(workload / (g.m / 2)).c_str());
-    log_info("Workload (large-deg vid in [0, %d]): %s, BMP: %s, avg: %s", FIRST_RANGE_SIZE,
-             FormatWithCommas(workload_large_deg).c_str(),
-             FormatWithCommas(workload_bmp).c_str(),
-             FormatWithCommas(workload_large_deg / (g.m / 2)).c_str());
-#endif
     return tc_cnt;
 }
 

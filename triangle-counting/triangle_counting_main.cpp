@@ -166,7 +166,7 @@ int main(int argc, char *argv[]) {
         // 4th: Triangle Counting.
         log_info("Mem Usage: %s KB", FormatWithCommas(getValue()).c_str());
         size_t tc_cnt = 0;
-        tc_cnt = CountTriMergeDODG(g, max_omp_threads);
+        tc_cnt = CountTriBMPAndMergeWithPackDODG(g, max_omp_threads);
         log_info("Mem Usage: %s KB", FormatWithCommas(getValue()).c_str());
         log_info("There are %zu triangles in the input graph.", tc_cnt);
         printf("There are %zu triangles in the input graph.\n", tc_cnt);

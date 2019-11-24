@@ -112,7 +112,6 @@ int main(int argc, char *argv[]) {
 
 #pragma omp parallel for schedule(dynamic, 100)
         for (auto u = 0u; u < g.n; u++) {
-            //  Index for First Range.
             sort(g.row_ptrs[u] + g.adj, g.row_ptrs[u + 1] + g.adj);
         }
         // 4th: Triangle Counting.
