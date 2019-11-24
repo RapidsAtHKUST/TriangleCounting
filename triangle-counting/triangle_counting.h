@@ -54,7 +54,7 @@ inline size_t CountTriMergeDODG(graph_t &g, int max_omp_threads) {
             //  Index for First Range.
             for (auto edge_idx = g.row_ptrs[u]; edge_idx < g.row_ptrs[u + 1]; edge_idx++) {
                 auto v = g.adj[edge_idx];
-                tc_cnt += SetIntersectionScalarCntDetail(&g, g.row_ptrs[u], g.row_ptrs[u + 1],
+                tc_cnt += SetInterCntVecMerge(&g, g.row_ptrs[u], g.row_ptrs[u + 1],
                                               g.row_ptrs[v], g.row_ptrs[v + 1]);
             }
         }

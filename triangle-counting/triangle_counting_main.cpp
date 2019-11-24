@@ -162,6 +162,7 @@ int main(int argc, char *argv[]) {
         auto *org = g.adj;
         ReorderDegDescendingDODG(g, new_dict, old_dict, tmp_mem_blocks, deg_lst);
         free(org);
+        free(deg_lst);
 
         // 4th: Triangle Counting.
         log_info("Mem Usage: %s KB", FormatWithCommas(getValue()).c_str());
