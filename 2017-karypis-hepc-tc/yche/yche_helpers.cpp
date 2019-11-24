@@ -71,7 +71,7 @@ gk_graph_t *gk_graph_Read_bin_edge_lst(char *filename) {
     {
         // 1st: get the cardinality of degree array
 #pragma omp for reduction(max: max_node_id)
-        for (uint32_t i = 0; i < edge_lst.size(); i++) {
+        for (size_t i = 0; i < edge_lst.size(); i++) {
             max_node_id = max(max_node_id, max(edge_lst[i].first, edge_lst[i].second));
         }
 #pragma omp single nowait
