@@ -207,8 +207,8 @@ inline int SetInterCntAVX2DetailOneEight(graph_t *g, OFF &off_nei_u, OFF uEnd, O
     return cnt;
 }
 
-
-inline int SetInterCntAVX2DetailTwoFour(graph_t *g, eid_t &off_nei_u, eid_t uEnd, eid_t &off_nei_v, eid_t vEnd) {
+template <typename OFF>
+inline int SetInterCntAVX2DetailTwoFour(graph_t *g, OFF &off_nei_u, OFF uEnd, OFF &off_nei_v, OFF vEnd) {
     int cnt = 0;
     __m256i per_u_order = _mm256_set_epi32(1, 1, 1, 1, 0, 0, 0, 0);
     __m256i per_v_order = _mm256_set_epi32(3, 2, 1, 0, 3, 2, 1, 0);
@@ -254,7 +254,8 @@ inline int SetInterCntAVX2DetailTwoFour(graph_t *g, eid_t &off_nei_u, eid_t uEnd
 }
 
 // The order of off_u and off_v in intersection_res is not important. No duplicated equals.
-inline int SetInterCntAVX2Detail(graph_t *g, eid_t off_nei_u, eid_t uEnd, eid_t off_nei_v, eid_t vEnd) {
+template <typename OFF>
+inline int SetInterCntAVX2Detail(graph_t *g, OFF off_nei_u, OFF uEnd, OFF off_nei_v, OFF vEnd) {
     int cnt = 0;
     auto size_ratio = (vEnd - off_nei_v) / (uEnd - off_nei_u);
     if (size_ratio > 2) {

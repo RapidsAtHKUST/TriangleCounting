@@ -140,7 +140,7 @@ inline size_t CountTriBMPAndMergeWithPackDODG(graph_t &g, int max_omp_threads) {
                         workload_large_deg += du + dv;
 #endif
                         if (g.row_ptrs[v] < row_ptrs_beg[v]) {
-                            cn_count += SetIntersectionScalarCntDetail(&g, g.row_ptrs[u], row_ptrs_beg[u], g.row_ptrs[v],
+                            cn_count += SetInterCntVecMerge(&g, g.row_ptrs[u], row_ptrs_beg[u], g.row_ptrs[v],
                                                             row_ptrs_beg[v]);
                         }
                     }
@@ -152,7 +152,7 @@ inline size_t CountTriBMPAndMergeWithPackDODG(graph_t &g, int max_omp_threads) {
 #ifdef WORKLOAD_STAT
                     workload += du + dv;
 #endif
-                    cn_count += SetIntersectionScalarCntDetail(&g, row_ptrs_beg[u], row_ptrs_end[u + 1],
+                    cn_count += SetInterCntVecMerge(&g, row_ptrs_beg[u], row_ptrs_end[u + 1],
                                                     row_ptrs_beg[v], row_ptrs_end[v + 1]);
                 }
                 tc_cnt += cn_count;
