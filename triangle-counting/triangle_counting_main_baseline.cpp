@@ -108,16 +108,11 @@ int main(int argc, char *argv[]) {
         log_info("Undirected Graph G = (|V|, |E|): %lld, %lld", g.n, g.m);
         log_info("Mem Usage: %s KB", FormatWithCommas(getValue()).c_str());
 
-        // 3rd: Reordering.
-        vector<int32_t> new_dict;
-        vector<int32_t> old_dict;
-        free(edge_lst);
-
-        auto *tmp_mem_blocks = (int32_t *) malloc(size / 2);
-        auto *org = g.adj;
-        ReorderDegDescendingDODG(g, new_dict, old_dict, tmp_mem_blocks, deg_lst);
-        free(org);
-
+#pragma omp parallel for schedule(dynamic, 100)
+        for (auto u = 0u; u < g.n; u++) {
+            //  Index for First Range.
+            sort(g.row_ptrs[u] + g.adj, g.row_ptrs[u + 1] + g.adj);
+        }
         // 4th: Triangle Counting.
         log_info("Mem Usage: %s KB", FormatWithCommas(getValue()).c_str());
         size_t tc_cnt = 0;
