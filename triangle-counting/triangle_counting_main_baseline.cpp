@@ -103,6 +103,8 @@ int main(int argc, char *argv[]) {
                              || (it > 0 && edge_lst[it - 1] == edge_lst[it]));
                 });
         free(deg_lst);
+        free(edge_lst);
+
         assert(g.row_ptrs[num_vertices] <= num_edges);
         g.m = g.row_ptrs[num_vertices];
         log_info("Undirected Graph G = (|V|, |E|): %lld, %lld", g.n, g.m);
