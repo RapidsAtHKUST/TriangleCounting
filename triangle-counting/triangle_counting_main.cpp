@@ -25,7 +25,6 @@ using namespace std;
 using namespace popl;
 using namespace std::chrono;
 
-//#define MMAP
 #define PAGE_SIZE (4096)
 #define IO_REQ_SIZE (PAGE_SIZE * 32)
 #define IO_QUEUE_DEPTH (16)
@@ -98,36 +97,6 @@ int main(int argc, char *argv[]) {
             }
             return l.first < r.first;
         });
-
-#ifdef VERIFY_PROCESSED_EDGE_LST
-        size_t gt_num_edges = 0;
-#pragma omp parallel
-        {
-#pragma omp for reduction(+:gt_num_edges)
-            for (size_t it = 0; it < num_edges; it++) {
-                if (edge_lst[it].first == edge_lst[it].second || (it > 0 && edge_lst[it - 1] == edge_lst[it]))
-                    continue;
-                gt_num_edges++;
-            }
-#pragma omp single
-            {
-                log_info("Remove Duplicates: %zu", gt_num_edges);
-            }
-#pragma omp for
-            for (size_t i = 0; i < num_edges - 1; i++) {
-                auto l = edge_lst[i];
-                auto r = edge_lst[i + 1];
-                if (l.first == r.first) {
-                    // = because of duplicates: self-loop-edge and multi-edge
-                    assert(l.second <= r.second);
-                } else {
-                    assert(l.first < r.first);
-                }
-            }
-#pragma omp single
-            log_info("Verification Time: %.9lfs", sort_timer.elapsed());
-        }
-#endif
         log_info("Sort Time: %.9lfs", sort_timer.elapsed());
         auto num_vertices = static_cast<uint32_t >(max_node_id) + 1;
         log_info("Pre-Process Edge List Time: %.9lf s", global_timer.elapsed());
@@ -135,14 +104,12 @@ int main(int argc, char *argv[]) {
         // 2nd: Convert Edge List to CSR.
         graph_t g{.n=num_vertices, .m = 0, .adj=nullptr, .row_ptrs=nullptr};
         uint32_t *deg_lst;
-//        g.adj = (int32_t *) malloc(size / 2);
         g.adj = nullptr;
 #ifdef MMAP
         munlock(edge_lst, size);
 #endif
         ConvertEdgeListToDODGCSR(num_edges, edge_lst, num_vertices, deg_lst, g.row_ptrs, g.adj,
                                  max_omp_threads, [&](size_t it) {
-                    assert(edge_lst != nullptr);
                     return !(edge_lst[it].first == edge_lst[it].second
                              || (it > 0 && edge_lst[it - 1] == edge_lst[it]));
                 });
@@ -160,7 +127,6 @@ int main(int argc, char *argv[]) {
         auto *org = g.adj;
         ReorderDegDescendingDODG(g, new_dict, old_dict, tmp_mem_blocks, deg_lst);
         free(org);
-
         free(deg_lst);
 
         // 4th: Triangle Counting.

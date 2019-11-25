@@ -1,9 +1,10 @@
 #pragma once
 
+#include <future>
 #include "pre_processing.h"
 
 bool RankLT(int du, int dv, int u, int v) {
-    assert(u != v);
+//    assert(u != v);
     return du < dv || ((du == dv) && (u < v));
 }
 
@@ -17,6 +18,15 @@ void ConvertEdgeListToDODGCSR(OFF num_edges, pair<T, T> *&edge_lst,
     off = (OFF *) malloc(sizeof(OFF) * (num_vertices + 1));
     auto cur_write_off = (OFF *) malloc(sizeof(OFF) * (num_vertices + 1));
     vector<row_ptr_t> histogram;
+
+    auto io_future = std::async(std::launch::async, [=]() {
+        auto tmp_file_fd = open("tmp_el.bin", O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+        size_t size = num_edges * sizeof(int32_t) * 2;
+        ftruncate(tmp_file_fd, size);
+        auto write_buf = (pair<T, T> *) mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, tmp_file_fd, 0);
+        memcpy(write_buf, edge_lst, size);
+        return write_buf;
+    });
 #pragma omp parallel num_threads(max_omp_threads)
     {
         MemSetOMP(deg_lst, 0, num_vertices + 1);
@@ -52,22 +62,20 @@ void ConvertEdgeListToDODGCSR(OFF num_edges, pair<T, T> *&edge_lst,
         }
         MemCpyOMP(cur_write_off, off, num_vertices + 1);
 
-        // Scatter.
         // Write Edge List to File, Using Page Cache.
 #pragma omp single
         {
             log_info("Mem Usage: %s KB", FormatWithCommas(getValue()).c_str());
-            auto tmp_file_fd = open("tmp_el.bin", O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+            auto tmp = edge_lst;
+            edge_lst = io_future.get();
+            log_info("Mem Usage: %s KB", FormatWithCommas(getValue()).c_str());
+
             size_t size = num_edges * sizeof(int32_t) * 2;
-            ftruncate(tmp_file_fd, size);
-            auto write_buf = (pair<T, T> *) mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, tmp_file_fd, 0);
-            memcpy(write_buf, edge_lst, size);
 #ifdef MMAP
-            munmap(edge_lst, size);
+            munmap(tmp, size);
 #else
-            free(edge_lst);
+            free(tmp);
 #endif
-            edge_lst = write_buf;
             madvise(edge_lst, size, MADV_SEQUENTIAL);
 
             if (adj_lst == nullptr) {
@@ -76,6 +84,8 @@ void ConvertEdgeListToDODGCSR(OFF num_edges, pair<T, T> *&edge_lst,
             }
             log_info("[%s]: PrefixSum Time: %.9lf s", __FUNCTION__, convert_timer.elapsed());
         }
+
+        // Scatter.
 #pragma omp for schedule(dynamic, 32*4096/8)
         for (size_t i = 0; i < num_edges; i++) {
             if (f(i)) {

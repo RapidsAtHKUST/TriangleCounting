@@ -7,7 +7,6 @@
 
 #define MAX_PACK_NUM (32768)
 #define FIRST_RANGE_SIZE (32768)
-//#define WORKLOAD_STAT
 
 template<typename OFF, typename WI, typename WC>
 void PackWords(graph_t &g, OFF *row_ptrs_beg, int to_pack_num, vector<vector<WI>> &word_indexes,
@@ -32,34 +31,6 @@ void PackWords(graph_t &g, OFF *row_ptrs_beg, int to_pack_num, vector<vector<WI>
     {
         log_info("Finish Indexing: %.9lfs", tc_timer.elapsed());
     }
-}
-
-inline size_t CountTriMergeDODG(graph_t &g, int max_omp_threads) {
-    Timer tc_timer;
-    int max_d = 0;
-    size_t tc_cnt = 0;
-
-#pragma omp parallel num_threads(max_omp_threads)
-    {
-#pragma omp for reduction(max: max_d)
-        for (auto u = 0u; u < g.n; u++) {
-            max_d = max<int>(max_d, g.row_ptrs[u + 1] - g.row_ptrs[u]);
-        }
-#pragma omp single
-        {
-            log_info("finish init row_ptrs_end, max d: %d, time: %.9lfs", max_d, tc_timer.elapsed());
-        }
-#pragma omp for schedule(dynamic, 100) reduction(+:tc_cnt)
-        for (auto u = 0u; u < g.n; u++) {
-            //  Index for First Range.
-            for (auto edge_idx = g.row_ptrs[u]; edge_idx < g.row_ptrs[u + 1]; edge_idx++) {
-                auto v = g.adj[edge_idx];
-                tc_cnt += SetInterCntVecMerge(&g, g.row_ptrs[u], g.row_ptrs[u + 1],
-                                              g.row_ptrs[v], g.row_ptrs[v + 1]);
-            }
-        }
-    }
-    return tc_cnt;
 }
 
 inline size_t CountTriBMPAndMergeWithPackDODG(graph_t &g, int max_omp_threads) {
@@ -122,11 +93,6 @@ inline size_t CountTriBMPAndMergeWithPackDODG(graph_t &g, int max_omp_threads) {
                     if (v < to_pack_num) {
                         auto num_words_v = word_indexes[v].size();
                         for (size_t i = 0; i < num_words_v; i++) {
-#ifdef WORKLOAD_STAT
-                            workload++;
-                            workload_bmp++;
-                            workload_large_deg++;
-#endif
                             buffer[i] = bitmap.getWord(word_indexes[v][i]);
                         }
                         for (size_t i = 0; i < num_words_v; i++) {
@@ -134,11 +100,6 @@ inline size_t CountTriBMPAndMergeWithPackDODG(graph_t &g, int max_omp_threads) {
                         }
                         cn_count += popcnt(&buffer.front(), sizeof(word_t) * num_words_v);
                     } else {
-#ifdef WORKLOAD_STAT
-                        auto dv = row_ptrs_beg[v] - g.row_ptrs[v];
-                        workload += du + dv;
-                        workload_large_deg += du + dv;
-#endif
                         if (g.row_ptrs[v] < row_ptrs_beg[v]) {
                             cn_count += SetInterCntVecMerge(&g, g.row_ptrs[u], row_ptrs_beg[u], g.row_ptrs[v],
                                                             row_ptrs_beg[v]);
@@ -149,9 +110,6 @@ inline size_t CountTriBMPAndMergeWithPackDODG(graph_t &g, int max_omp_threads) {
                 // Second Range.
                 auto dv = row_ptrs_end[v + 1] - row_ptrs_beg[v];
                 if (du > 0 && dv > 0) {
-#ifdef WORKLOAD_STAT
-                    workload += du + dv;
-#endif
                     cn_count += SetInterCntVecMerge(&g, row_ptrs_beg[u], row_ptrs_end[u + 1],
                                                     row_ptrs_beg[v], row_ptrs_end[v + 1]);
                 }
