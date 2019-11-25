@@ -8,7 +8,7 @@ bool RankLT(int du, int dv, int u, int v) {
 }
 
 template<typename T, typename F, typename OFF>
-void ConvertEdgeListToDODGCSR(OFF num_edges, pair<T, T> *edge_lst,
+void ConvertEdgeListToDODGCSR(OFF num_edges, pair<T, T> *&edge_lst,
                               uint32_t num_vertices, uint32_t *&deg_lst, OFF *&off, int32_t *&adj_lst,
                               int max_omp_threads, F f) {
     Timer convert_timer;
@@ -38,7 +38,6 @@ void ConvertEdgeListToDODGCSR(OFF num_edges, pair<T, T> *edge_lst,
                     __sync_fetch_and_add(&dodg_deg_lst[dst], 1);
             }
         }
-
 #pragma omp single
         log_info("[%s]: Histogram Time: %.9lf s", __FUNCTION__, convert_timer.elapsed());
 
@@ -54,15 +53,30 @@ void ConvertEdgeListToDODGCSR(OFF num_edges, pair<T, T> *edge_lst,
         MemCpyOMP(cur_write_off, off, num_vertices + 1);
 
         // Scatter.
+        // Write Edge List to File, Using Page Cache.
 #pragma omp single
         {
+            log_info("Mem Usage: %s KB", FormatWithCommas(getValue()).c_str());
+            auto tmp_file_fd = open("tmp_el.bin", O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+            size_t size = num_edges * sizeof(int32_t) * 2;
+            ftruncate(tmp_file_fd, size);
+            auto write_buf = (pair<T, T> *) mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, tmp_file_fd, 0);
+            memcpy(write_buf, edge_lst, size);
+#ifdef MMAP
+            munmap(edge_lst, size);
+#else
+            free(edge_lst);
+#endif
+            edge_lst = write_buf;
+            madvise(edge_lst, size, MADV_SEQUENTIAL);
+
             if (adj_lst == nullptr) {
                 log_info("Allocate Inside (adj_lst)...");
                 adj_lst = (int32_t *) malloc(sizeof(int32_t) * off[num_vertices]);
             }
             log_info("[%s]: PrefixSum Time: %.9lf s", __FUNCTION__, convert_timer.elapsed());
         }
-#pragma omp for
+#pragma omp for schedule(dynamic, 32*4096/8)
         for (size_t i = 0; i < num_edges; i++) {
             if (f(i)) {
                 auto src = edge_lst[i].first;

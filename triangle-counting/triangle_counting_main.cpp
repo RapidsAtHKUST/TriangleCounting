@@ -135,13 +135,14 @@ int main(int argc, char *argv[]) {
         // 2nd: Convert Edge List to CSR.
         graph_t g{.n=num_vertices, .m = 0, .adj=nullptr, .row_ptrs=nullptr};
         uint32_t *deg_lst;
-        g.adj = (int32_t *) malloc(size / 2);
-
+//        g.adj = (int32_t *) malloc(size / 2);
+        g.adj = nullptr;
 #ifdef MMAP
         munlock(edge_lst, size);
 #endif
         ConvertEdgeListToDODGCSR(num_edges, edge_lst, num_vertices, deg_lst, g.row_ptrs, g.adj,
-                                 max_omp_threads, [=](size_t it) {
+                                 max_omp_threads, [&](size_t it) {
+                    assert(edge_lst != nullptr);
                     return !(edge_lst[it].first == edge_lst[it].second
                              || (it > 0 && edge_lst[it - 1] == edge_lst[it]));
                 });
@@ -153,15 +154,13 @@ int main(int argc, char *argv[]) {
         // 3rd: Reordering.
         vector<int32_t> new_dict;
         vector<int32_t> old_dict;
-#ifndef MMAP
-        free(edge_lst);
-#else
         munmap(edge_lst, size);
-#endif
+
         auto *tmp_mem_blocks = (int32_t *) malloc(size / 2);
         auto *org = g.adj;
         ReorderDegDescendingDODG(g, new_dict, old_dict, tmp_mem_blocks, deg_lst);
         free(org);
+
         free(deg_lst);
 
         // 4th: Triangle Counting.
