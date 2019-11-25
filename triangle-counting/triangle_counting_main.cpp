@@ -12,7 +12,6 @@
 
 #include "util/log.h"
 #include "util/popl.h"
-#include "util/parasort_cmp.h"
 #include "util/timer.h"
 #include "util/util.h"
 #include "util/pretty_print.h"
@@ -37,25 +36,19 @@ int main(int argc, char *argv[]) {
     using Edge = pair<int32_t, int32_t>;
     Timer global_timer;
     if (string_option->is_set()) {
+#ifndef USE_LOG
+        omp_set_num_threads(std::thread::hardware_concurrency());
+#endif
         size_t size = file_size(string_option->value(0).c_str());
         size_t num_edges = size / sizeof(uint32_t) / 2;
         log_info("File size: %zu", size);
         log_info("#of Edges: %zu", num_edges);
 
+        // Load Bin File (DIO).
         auto file_name = string_option->value(0);
-#ifndef MMAP
         auto file_fd = open(file_name.c_str(), O_RDONLY | O_DIRECT, S_IRUSR | S_IWUSR);
         Edge *edge_lst = (Edge *) memalign(PAGE_SIZE, size + IO_REQ_SIZE);
-#else
-        auto file_fd = open(file_name.c_str(), O_RDONLY, S_IRUSR | S_IWUSR);
-        Edge *edge_lst = (Edge *) mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE, file_fd, 0);
-        madvise(edge_lst, size, MADV_SEQUENTIAL);
-#endif
-#ifndef USE_LOG
-        omp_set_num_threads(std::thread::hardware_concurrency());
-#endif
         auto max_omp_threads = omp_get_max_threads();
-#ifndef MMAP
         Timer io_timer;
         size_t read_size = 0;
 #pragma omp parallel num_threads(IO_QUEUE_DEPTH)
@@ -75,10 +68,8 @@ int main(int argc, char *argv[]) {
             log_info("%zu, %zu", read_size, size);
         }
         log_info("IO Time: %.6lfs, DIO-QPS: %.6lf GB/s", io_timer.elapsed(), size / io_timer.elapsed() / pow(1024, 3));
-#else
-        mlock(edge_lst, size);
-#endif
         log_info("Load File Time: %.9lfs", global_timer.elapsed());
+
         // 1st: Remove Multi-Edges and Self-Loops.
         Timer sort_timer;
         int32_t max_node_id = 0;
@@ -90,7 +81,7 @@ int main(int argc, char *argv[]) {
             max_node_id = max(max_node_id, max(edge_lst[i].first, edge_lst[i].second));
         }
         log_info("Populate File Time: %.9lfs", global_timer.elapsed());
-
+        // In-Place Parallel Sort.
         ips4o::parallel::sort(edge_lst, edge_lst + num_edges, [](Edge l, Edge r) {
             if (l.first == r.first) {
                 return l.second < r.second;
@@ -105,15 +96,12 @@ int main(int argc, char *argv[]) {
         graph_t g{.n=num_vertices, .m = 0, .adj=nullptr, .row_ptrs=nullptr};
         uint32_t *deg_lst;
         g.adj = nullptr;
-#ifdef MMAP
-        munlock(edge_lst, size);
-#endif
+
         ConvertEdgeListToDODGCSR(num_edges, edge_lst, num_vertices, deg_lst, g.row_ptrs, g.adj,
                                  max_omp_threads, [&](size_t it) {
                     return !(edge_lst[it].first == edge_lst[it].second
                              || (it > 0 && edge_lst[it - 1] == edge_lst[it]));
                 });
-        assert(g.row_ptrs[num_vertices] <= num_edges);
         g.m = g.row_ptrs[num_vertices];
         log_info("Undirected Graph G = (|V|, |E|): %lld, %lld", g.n, g.m);
         log_info("Mem Usage: %s KB", FormatWithCommas(getValue()).c_str());

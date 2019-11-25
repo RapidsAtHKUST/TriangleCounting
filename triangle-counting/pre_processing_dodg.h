@@ -71,11 +71,7 @@ void ConvertEdgeListToDODGCSR(OFF num_edges, pair<T, T> *&edge_lst,
             log_info("Mem Usage: %s KB", FormatWithCommas(getValue()).c_str());
 
             size_t size = num_edges * sizeof(int32_t) * 2;
-#ifdef MMAP
-            munmap(tmp, size);
-#else
             free(tmp);
-#endif
             madvise(edge_lst, size, MADV_SEQUENTIAL);
 
             if (adj_lst == nullptr) {
