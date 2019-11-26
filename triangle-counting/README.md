@@ -1,5 +1,9 @@
 # Triangle counting
 
+## Technical Report
+
+see [tech_report.md](tech_report.md)
+
 ## Compile
 
 ```bash
