@@ -9,7 +9,7 @@ bool RankLT(int du, int dv, int u, int v) {
 }
 
 template<typename T, typename OFF>
-void ConvertEdgeListToDODGCSR(OFF num_edges, pair<T, T> *edge_lst,
+void ConvertEdgeListToDODGCSR(OFF num_edges, pair<T, T> *&edge_lst,
                               uint32_t num_vertices, uint32_t *&deg_lst, OFF *&off, int32_t *&adj_lst,
                               int max_omp_threads) {
     ConvertEdgeListToDODGCSR(num_edges, edge_lst,
