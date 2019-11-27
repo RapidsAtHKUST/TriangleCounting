@@ -149,8 +149,7 @@ inline size_t CountTriBMPAndMergeWithPack(graph_t &g, int max_omp_threads) {
     {
 #pragma omp for reduction(max: max_d)
         for (auto u = 0u; u < g.n; u++) {
-            row_ptrs_end[u + 1] = static_cast<uint32_t>(
-                    lower_bound(g.adj + g.row_ptrs[u], g.adj + g.row_ptrs[u + 1], u) - g.adj);
+            row_ptrs_end[u + 1] = lower_bound(g.adj + g.row_ptrs[u], g.adj + g.row_ptrs[u + 1], u) - g.adj;
             row_ptrs_beg[u] = lower_bound(g.adj + g.row_ptrs[u], g.adj + g.row_ptrs[u + 1],
                                           min<int>(FIRST_RANGE_SIZE, u)) - g.adj;
             max_d = max<int>(max_d, row_ptrs_end[u + 1] - g.row_ptrs[u]);
