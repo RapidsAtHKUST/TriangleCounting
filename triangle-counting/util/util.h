@@ -20,10 +20,17 @@ using namespace std;
 
 template<class T>
 std::string FormatWithCommas(T value) {
-    std::stringstream ss;
-    ss.imbue(std::locale(""));
-    ss << std::fixed << value;
-    return ss.str();
+//    std::stringstream ss;
+//    ss.imbue(std::locale(""));
+//    ss << std::fixed << value;
+//    return ss.str();
+    string numWithCommas = to_string(value);
+    int insertPosition = numWithCommas.length() - 3;
+    while (insertPosition > 0) {
+        numWithCommas.insert(insertPosition, ",");
+        insertPosition-=3;
+    }
+    return numWithCommas;
 }
 
 inline size_t file_size(const char *file_name) {
