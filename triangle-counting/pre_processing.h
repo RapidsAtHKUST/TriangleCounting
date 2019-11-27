@@ -4,22 +4,22 @@
 #include "util/graph.h"
 #include "ips4o/ips4o.hpp"
 
-template<typename T, typename I>
-T RemoveDuplicates(pair<T, T> *&edge_lst, I &num_edges, pair<T, T> *&edge_lst_buffer) {
+template<typename T, typename OFF>
+T RemoveDuplicates(pair<T, T> *&edge_lst, OFF &num_edges, pair<T, T> *&edge_lst_buffer) {
     using Edge = pair<T, T>;
     Timer timer;
     T max_node_id = 0;
     T num_buckets;
     auto max_omp_threads = omp_get_max_threads();
 
-    uint32_t *bucket_ptrs;
-    uint32_t *cur_write_off;
-    vector<uint32_t> histogram;
+    OFF *bucket_ptrs;
+    OFF *cur_write_off;
+    vector<OFF> histogram;
 
 #pragma omp parallel num_threads(max_omp_threads)
     {
 #pragma omp for reduction(max: max_node_id)
-        for (I i = 0u; i < num_edges; i++) {
+        for (OFF i = 0u; i < num_edges; i++) {
             if (edge_lst[i].first > edge_lst[i].second) {
                 swap(edge_lst[i].first, edge_lst[i].second);
             }
@@ -31,7 +31,7 @@ T RemoveDuplicates(pair<T, T> *&edge_lst, I &num_edges, pair<T, T> *&edge_lst_bu
         }
         // Partition.
         BucketSort(histogram, edge_lst, edge_lst_buffer, cur_write_off, bucket_ptrs, num_edges, num_buckets,
-                   [&edge_lst](int i) {
+                   [&edge_lst](size_t i) {
                        return edge_lst[i].first;
                    }, &timer);
 
@@ -50,7 +50,7 @@ T RemoveDuplicates(pair<T, T> *&edge_lst, I &num_edges, pair<T, T> *&edge_lst_bu
     log_info("Finish Sort, %.9lfs", timer.elapsed());
 
     // Selection.
-    auto *relative_off = (uint32_t *) malloc(sizeof(uint32_t) * num_edges);
+    auto *relative_off = (OFF *) malloc(sizeof(OFF) * num_edges);
 #pragma omp parallel num_threads(max_omp_threads)
     {
         SelectNotFOMP(histogram, edge_lst_buffer, edge_lst, relative_off, num_edges, [edge_lst](uint32_t it) {
