@@ -53,7 +53,7 @@ T RemoveDuplicates(pair<T, T> *&edge_lst, OFF &num_edges, pair<T, T> *&edge_lst_
     auto *relative_off = (OFF *) malloc(sizeof(OFF) * num_edges);
 #pragma omp parallel num_threads(max_omp_threads)
     {
-        SelectNotFOMP(histogram, edge_lst_buffer, edge_lst, relative_off, num_edges, [edge_lst](uint32_t it) {
+        SelectNotFOMP(histogram, edge_lst_buffer, edge_lst, relative_off, num_edges, [edge_lst](size_t it) {
             return edge_lst[it].first == edge_lst[it].second || (it > 0 && edge_lst[it - 1] == edge_lst[it]);
         });
     }

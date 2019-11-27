@@ -79,7 +79,7 @@ int main(int argc, char *argv[]) {
 #else
         ConvertEdgeListToCSR(num_edges, edge_lst, num_vertices, deg_lst, g.row_ptrs, g.adj, max_omp_threads);
         assert(g.row_ptrs[num_vertices] == 2 * num_edges);
-        log_debug("%d, %d", g.row_ptrs[num_vertices], 2 * num_edges);
+        log_debug("%zu, %zu", g.row_ptrs[num_vertices], 2 * num_edges);
 #endif
 
         vector<int32_t> new_dict;
