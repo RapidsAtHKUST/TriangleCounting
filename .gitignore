@@ -1,3 +1,4 @@
+*.pdf
 cmake-build-debug
 bak
 .idea
