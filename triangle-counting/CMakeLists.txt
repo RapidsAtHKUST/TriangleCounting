@@ -27,7 +27,18 @@ else ()
 endif ()
 
 include_directories(.)
+link_libraries(atomic)
 add_executable(test_inplace_sort playground/playground_inplace_sort.cpp util/log.cpp)
 add_executable(remove_duplicate playground/output_remove_duplicate.cpp util/log.cpp)
 add_executable(tc triangle_counting_main.cpp util/log.cpp)
 
+### Legacy Experimental Executables
+### CSR-DODG-version
+add_executable(tc-legacy-dodg triangle_counting_main_legacy.cpp util/log.cpp)
+target_compile_definitions(tc-legacy-dodg PRIVATE WORKLOAD_STAT=1)
+target_compile_definitions(tc-legacy-dodg PRIVATE DODG=1)
+
+### CSR-normal-version
+add_executable(tc-legacy triangle_counting_main_legacy.cpp util/log.cpp)
+target_compile_definitions(tc-legacy PRIVATE WORKLOAD_STAT=1)
+###
