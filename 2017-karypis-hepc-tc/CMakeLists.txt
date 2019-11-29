@@ -5,7 +5,7 @@ set(CMAKE_VERBOSE_MAKEFILE ON)
 
 set(SHARED FALSE CACHE BOOL "build a shared library")
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 14)
 add_compile_options(-D__OPENMP__ -DUSE_LOG)
 add_compile_options(-g)
 
