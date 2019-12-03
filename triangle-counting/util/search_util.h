@@ -5,7 +5,7 @@
 #include <cstdint>
 
 template<typename T, typename OFF>
-uint32_t LinearSearch(T *array, OFF offset_beg, OFF offset_end, T val) {
+OFF LinearSearch(T *array, OFF offset_beg, OFF offset_end, T val) {
     // linear search fallback
     for (auto offset = offset_beg; offset < offset_end; offset++) {
         if (array[offset] >= val) {
@@ -16,7 +16,7 @@ uint32_t LinearSearch(T *array, OFF offset_beg, OFF offset_end, T val) {
 }
 
 template<typename T, typename OFF>
-uint32_t BranchFreeBinarySearch(T *a, OFF offset_beg, OFF offset_end, T x) {
+OFF BranchFreeBinarySearch(T *a, OFF offset_beg, OFF offset_end, T x) {
     OFF n = offset_end - offset_beg;
     const T *base = a + offset_beg;
     while (n > 1) {
@@ -31,7 +31,7 @@ uint32_t BranchFreeBinarySearch(T *a, OFF offset_beg, OFF offset_end, T x) {
 
 // Assuming (offset_beg != offset_end)
 template<typename T, typename OFF>
-uint32_t GallopingSearch(T *array, OFF offset_beg, OFF offset_end, T val) {
+OFF GallopingSearch(T *array, OFF offset_beg, OFF offset_end, T val) {
     if (array[offset_end - 1] < val) {
         return offset_end;
     }
@@ -124,7 +124,7 @@ OFF BinarySearchForGallopingSearchAVX2(const int32_t *array, OFF offset_beg, OFF
 
 // Assuming size > 0
 template<typename OFF>
-uint32_t GallopingSearchAVX2(int *array, OFF offset_beg, OFF offset_end, int val) {
+OFF GallopingSearchAVX2(int *array, OFF offset_beg, OFF offset_end, int val) {
 // Not necessary because of the linear search.
 //    if (array[offset_end - 1] < val) {
 //        return offset_end;
@@ -168,7 +168,7 @@ uint32_t GallopingSearchAVX2(int *array, OFF offset_beg, OFF offset_end, int val
 #ifdef __AVX512F__
 
 template<typename OFF>
-uint32_t LinearSearchAVX512(int *array, OFF offset_beg, OFF offset_end, int val) {
+OFF LinearSearchAVX512(int *array, OFF offset_beg, OFF offset_end, int val) {
     constexpr int parallelism = 16;
     __m512i pivot_element = _mm512_set1_epi32(val);
     for (; offset_beg + 15 < offset_end; offset_beg += parallelism) {
@@ -188,7 +188,7 @@ uint32_t LinearSearchAVX512(int *array, OFF offset_beg, OFF offset_end, int val)
 }
 
 template<typename OFF>
-uint32_t BinarySearchForGallopingSearchAVX512(const int *array, OFF offset_beg, OFF offset_end, int val) {
+OFF BinarySearchForGallopingSearchAVX512(const int *array, OFF offset_beg, OFF offset_end, int val) {
     while (offset_end - offset_beg >= 32) {
         auto mid = static_cast<uint32_t>((static_cast<unsigned long>(offset_beg) + offset_end) / 2);
         _mm_prefetch((char *) &array[(static_cast<unsigned long>(mid + 1) + offset_end) / 2], _MM_HINT_T0);
@@ -222,7 +222,7 @@ uint32_t BinarySearchForGallopingSearchAVX512(const int *array, OFF offset_beg, 
 }
 
 template<typename OFF>
-uint32_t GallopingSearchAVX512(int *array, OFF offset_beg, OFF offset_end, int val) {
+OFF GallopingSearchAVX512(int *array, OFF offset_beg, OFF offset_end, int val) {
     if (array[offset_end - 1] < val) {
         return offset_end;
     }
